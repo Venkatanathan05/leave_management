@@ -1,0 +1,19 @@
+.dashboard-page {
+  background-color: #111827;
+  min-height: 100vh;
+}
+
+.dashboard-layout {
+  display: flex;
+}
+
+.dashboard-main {
+  flex: 1;
+  padding-top: 80px; /* Space for navbar */
+}
+
+@media (max-width: 768px) {
+  .dashboard-main {
+    padding-top: 64px;
+  }
+}

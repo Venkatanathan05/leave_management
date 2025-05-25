@@ -1,217 +1,293 @@
-import { AppDataSource } from "../data-source";
-import { User } from "../entity/User";
-import { Leave } from "../entity/Leave";
-import { LeaveApproval } from "../entity/LeaveApproval";
-import { LeaveStatus } from "../entity/Leave";
-import { LeaveBalance } from "../entity/LeaveBalance";
-import { In } from "typeorm";
 import * as Hapi from "@hapi/hapi";
 import * as Boom from "@hapi/boom";
-import { LEAVE_THRESHOLD_ADMIN } from "../constants";
-
-const userRepository = AppDataSource.getRepository(User);
-const leaveRepository = AppDataSource.getRepository(Leave);
-const leaveApprovalRepository = AppDataSource.getRepository(LeaveApproval);
+import { AppDataSource } from "../data-source";
+import { User } from "../entity/User";
+import { Leave, LeaveStatus } from "../entity/Leave";
+import { LeaveBalance } from "../entity/LeaveBalance";
+import { LeaveApproval, ApprovalAction } from "../entity/LeaveApproval";
+import { LEAVE_THRESHOLD_HR, LEAVE_THRESHOLD_ADMIN } from "../constants";
+import { calculateWorkingDays } from "../utils/dateUtils";
+import {
+  getRequiredApprovals,
+  checkApprovalStatus,
+} from "../utils/approvalUtils";
+import { In } from "typeorm";
 
 export class HRController {
   async getUsers(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const user = request.auth.credentials as {
+    const userCredentials = request.auth.credentials as {
       user_id: number;
       role_id: number;
     };
 
-    if (user.role_id !== 5) {
-      throw Boom.unauthorized("Only HR can view users");
+    if (userCredentials.role_id !== 5) {
+      throw Boom.forbidden("Only HR can view users");
     }
 
     try {
-      const users = await userRepository
-        .createQueryBuilder("user")
-        .where("user.role_id IN (:...roleIds)", { roleIds: [2, 3, 4] }) // Managers, Employees, Interns
-        .leftJoinAndSelect("user.role", "role")
-        .leftJoinAndSelect("user.manager", "manager")
-        .select([
-          "user.user_id",
-          "user.name",
-          "user.email",
-          "user.role_id",
-          "role.name",
-          "manager.user_id",
-          "manager.name",
-        ])
-        .getMany();
+      const userRepository = AppDataSource.getRepository(User);
+      const users = await userRepository.find({
+        where: { role_id: In([2, 3, 4]) }, // Employees, Managers, Interns
+        select: ["user_id", "name", "email", "role_id", "manager_id"],
+        relations: ["role"],
+      });
 
-      return h.response(users).code(200);
+      return h
+        .response(
+          users.map((user) => ({
+            user_id: user.user_id,
+            name: user.name,
+            email: user.email,
+            role_id: user.role_id,
+            role_name: user.role.name,
+            manager_id: user.manager_id,
+          }))
+        )
+        .code(200);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      console.error("Error fetching users for HR:", error);
       throw Boom.internal("Internal server error fetching users");
     }
   }
 
   async getUserLeaveInfo(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const user = request.auth.credentials as {
+    const userCredentials = request.auth.credentials as {
       user_id: number;
       role_id: number;
     };
-    const { user_id: targetUserId } = request.params;
+    const userId = parseInt(request.params.user_id, 10);
 
-    if (user.role_id !== 5) {
-      throw Boom.unauthorized("Only HR can view leave info");
+    if (userCredentials.role_id !== 5) {
+      throw Boom.forbidden("Only HR can view user leave info");
+    }
+
+    if (isNaN(userId)) {
+      throw Boom.badRequest("Invalid user ID");
     }
 
     try {
-      const targetUser = await userRepository.findOne({
-        where: { user_id: parseInt(targetUserId), role_id: In([2, 3, 4]) },
-      });
+      const userRepository = AppDataSource.getRepository(User);
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const leaveBalanceRepository = AppDataSource.getRepository(LeaveBalance);
 
-      if (!targetUser) {
-        throw Boom.notFound("User not found or not accessible");
+      const user = await userRepository.findOne({
+        where: { user_id: userId, role_id: In([2, 3, 4]) },
+      });
+      if (!user) {
+        throw Boom.notFound(
+          "User not found or not a valid role for HR to view"
+        );
       }
 
-      const leaves = await leaveRepository
-        .createQueryBuilder("leave")
-        .where("leave.user_id = :userId", { userId: targetUserId })
-        .leftJoinAndSelect("leave.leaveType", "leaveType")
-        .select([
-          "leave.leave_id",
-          "leave.start_date",
-          "leave.end_date",
-          "leave.reason",
-          "leave.status",
-          "leave.applied_at",
-          "leaveType.type_id",
-          "leaveType.name",
-        ])
-        .orderBy("leave.applied_at", "DESC")
-        .getMany();
+      const leaves = await leaveRepository.find({
+        where: { user_id: userId },
+        relations: ["leaveType", "approvals"],
+        order: { applied_at: "DESC" },
+      });
 
-      const balances = await AppDataSource.getRepository(LeaveBalance)
-        .createQueryBuilder("balance")
-        .where("balance.user_id = :userId", { userId: targetUserId })
-        .leftJoinAndSelect("balance.leaveType", "leaveType")
-        .select([
-          "balance.available_days",
-          "leaveType.type_id",
-          "leaveType.name",
-        ])
-        .getMany();
+      const currentYear = new Date().getFullYear();
+      const balances = await leaveBalanceRepository.find({
+        where: { user_id: userId, year: currentYear },
+        relations: ["leaveType"],
+      });
 
-      return h.response({ leaves, balances }).code(200);
+      return h
+        .response({
+          user: {
+            user_id: user.user_id,
+            name: user.name,
+            email: user.email,
+            role_id: user.role_id,
+          },
+          leaves,
+          balances,
+        })
+        .code(200);
     } catch (error) {
+      if (Boom.isBoom(error)) throw error;
       console.error("Error fetching user leave info:", error);
       throw Boom.internal("Internal server error fetching leave info");
     }
   }
 
   async approveLeaveRequest(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const user = request.auth.credentials as {
+    const leaveId = parseInt(request.params.leave_id, 10);
+    const userCredentials = request.auth.credentials as {
       user_id: number;
       role_id: number;
     };
-    const { leave_id } = request.params;
-    const { comment } = request.payload as { comment?: string };
+    const payload = request.payload as { comments?: string };
 
-    if (user.role_id !== 5) {
-      throw Boom.unauthorized("Only HR can approve leave requests");
+    if (userCredentials.role_id !== 5) {
+      throw Boom.forbidden("Only HR can approve leaves");
+    }
+
+    if (isNaN(leaveId)) {
+      throw Boom.badRequest("Invalid leave ID");
     }
 
     try {
-      const leave = await leaveRepository.findOne({
-        where: { leave_id: parseInt(leave_id) },
-        relations: ["user", "approvals"],
-      });
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const leaveApprovalRepository =
+        AppDataSource.getRepository(LeaveApproval);
 
+      const leave = await leaveRepository.findOne({
+        where: { leave_id: leaveId },
+        relations: ["user", "leaveType", "approvals"],
+      });
       if (!leave) {
         throw Boom.notFound("Leave request not found");
       }
 
-      // Verify HR-level approval is required
-      const managerApproval = leave.approvals.find(
-        (a) => a.approver_role_id === 3
-      );
-      const requiresHR =
-        leave.user.role_id === 3 || // Manager leaves
-        (leave.user.role_id === 2 &&
-          managerApproval?.status === LeaveStatus.Approved); // Employee leaves post-Manager
-
-      if (!requiresHR) {
-        throw Boom.forbidden("HR approval not required for this leave");
+      if (
+        leave.user.role_id !== 2 &&
+        leave.user.role_id !== 3 &&
+        leave.user.role_id !== 4
+      ) {
+        throw Boom.forbidden(
+          "HR can only approve Employee, Manager, or Intern leaves"
+        );
       }
 
-      // Calculate leave duration
-      const startDate = new Date(leave.start_date);
-      const endDate = new Date(leave.end_date);
-      const duration =
-        Math.ceil(
-          (endDate.getTime() - startDate.getTime()) / (1000 * 3600 * 24)
-        ) + 1;
+      const duration = calculateWorkingDays(
+        new Date(leave.start_date),
+        new Date(leave.end_date)
+      );
+      if (duration <= LEAVE_THRESHOLD_HR && leave.required_approvals <= 1) {
+        throw Boom.forbidden("This leave does not require HR approval");
+      }
 
-      // Create approval record
-      const approval = new LeaveApproval();
-      approval.leave = leave;
-      approval.approver_id = user.user_id;
-      approval.approver_role_id = user.role_id;
-      approval.status = LeaveStatus.Approved;
-      approval.comments = comment || "Approved by HR";
-      approval.approved_at = new Date();
+      const existingApproval = await leaveApprovalRepository.findOne({
+        where: { leave_id: leaveId, approver_id: userCredentials.user_id },
+      });
+      if (
+        existingApproval &&
+        existingApproval.action === ApprovalAction.Approved
+      ) {
+        throw Boom.conflict("Leave already approved by you");
+      }
 
-      await leaveApprovalRepository.save(approval);
+      const newApproval = new LeaveApproval();
+      newApproval.leave_id = leaveId;
+      newApproval.approver_id = userCredentials.user_id;
+      newApproval.approver_role_id = userCredentials.role_id;
+      newApproval.action = ApprovalAction.Approved;
+      newApproval.comments = payload.comments || "";
+      newApproval.approved_at = new Date();
 
-      // Update leave status
-      leave.status =
-        duration > LEAVE_THRESHOLD_ADMIN
-          ? LeaveStatus.Pending
-          : LeaveStatus.Approved;
+      await leaveApprovalRepository.save(newApproval);
+
+      const updatedApprovals = [...leave.approvals, newApproval];
+      const { status, processed } = checkApprovalStatus(
+        leave,
+        updatedApprovals
+      );
+
+      leave.status = status;
       await leaveRepository.save(leave);
 
-      return h.response({ message: "Leave request approved" }).code(200);
+      if (processed && status === LeaveStatus.Approved) {
+        const leaveBalanceRepository =
+          AppDataSource.getRepository(LeaveBalance);
+        const balance = await leaveBalanceRepository.findOne({
+          where: {
+            user_id: leave.user_id,
+            type_id: leave.type_id,
+            year: new Date().getFullYear(),
+          },
+        });
+        if (balance && leave.leaveType.is_balance_based) {
+          balance.used_days += duration;
+          balance.available_days = balance.total_days - balance.used_days;
+          await leaveBalanceRepository.save(balance);
+        }
+      }
+
+      return h
+        .response({ message: `Leave ${status.toLowerCase()} successfully` })
+        .code(200);
     } catch (error) {
+      if (Boom.isBoom(error)) throw error;
       console.error("Error approving leave request:", error);
-      throw Boom.internal("Internal server error approving leave request");
+      throw Boom.internal("Internal server error approving leave");
     }
   }
 
   async rejectLeaveRequest(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const user = request.auth.credentials as {
+    const leaveId = parseInt(request.params.leave_id, 10);
+    const userCredentials = request.auth.credentials as {
       user_id: number;
       role_id: number;
     };
-    const { leave_id } = request.params;
-    const { comment } = request.payload as { comment?: string };
+    const payload = request.payload as { comments?: string };
 
-    if (user.role_id !== 5) {
-      throw Boom.unauthorized("Only HR can reject leave requests");
+    if (userCredentials.role_id !== 5) {
+      throw Boom.forbidden("Only HR can reject leaves");
+    }
+
+    if (isNaN(leaveId)) {
+      throw Boom.badRequest("Invalid leave ID");
     }
 
     try {
-      const leave = await leaveRepository.findOne({
-        where: { leave_id: parseInt(leave_id) },
-        relations: ["user"],
-      });
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const leaveApprovalRepository =
+        AppDataSource.getRepository(LeaveApproval);
 
+      const leave = await leaveRepository.findOne({
+        where: { leave_id: leaveId },
+        relations: ["user", "approvals"],
+      });
       if (!leave) {
         throw Boom.notFound("Leave request not found");
       }
 
-      // Create rejection record
-      const approval = new LeaveApproval();
-      approval.leave = leave;
-      approval.approver_id = user.user_id;
-      approval.approver_role_id = user.role_id;
-      approval.status = LeaveStatus.Rejected;
-      approval.comments = comment || "Rejected by HR";
-      approval.approved_at = new Date();
+      if (
+        leave.user.role_id !== 2 &&
+        leave.user.role_id !== 3 &&
+        leave.user.role_id !== 4
+      ) {
+        throw Boom.forbidden(
+          "HR can only reject Employee, Manager, or Intern leaves"
+        );
+      }
 
-      await leaveApprovalRepository.save(approval);
+      const duration = calculateWorkingDays(
+        new Date(leave.start_date),
+        new Date(leave.end_date)
+      );
+      if (duration <= LEAVE_THRESHOLD_HR && leave.required_approvals <= 1) {
+        throw Boom.forbidden("This leave does not require HR approval");
+      }
 
-      // Update leave status
+      const existingApproval = await leaveApprovalRepository.findOne({
+        where: { leave_id: leaveId, approver_id: userCredentials.user_id },
+      });
+      if (
+        existingApproval &&
+        existingApproval.action === ApprovalAction.Rejected
+      ) {
+        throw Boom.conflict("Leave already rejected by you");
+      }
+
+      const newApproval = new LeaveApproval();
+      newApproval.leave_id = leaveId;
+      newApproval.approver_id = userCredentials.user_id;
+      newApproval.approver_role_id = userCredentials.role_id;
+      newApproval.action = ApprovalAction.Rejected;
+      newApproval.comments = payload.comments || "";
+      newApproval.approved_at = new Date();
+
+      await leaveApprovalRepository.save(newApproval);
+
       leave.status = LeaveStatus.Rejected;
       await leaveRepository.save(leave);
 
-      return h.response({ message: "Leave request rejected" }).code(200);
+      return h.response({ message: "Leave rejected successfully" }).code(200);
     } catch (error) {
+      if (Boom.isBoom(error)) throw error;
       console.error("Error rejecting leave request:", error);
-      throw Boom.internal("Internal server error rejecting leave request");
+      throw Boom.internal("Internal server error rejecting leave");
     }
   }
 
@@ -219,61 +295,40 @@ export class HRController {
     request: Hapi.Request,
     h: Hapi.ResponseToolkit
   ) {
-    const user = request.auth.credentials as {
+    const userCredentials = request.auth.credentials as {
       user_id: number;
       role_id: number;
     };
 
-    if (user.role_id !== 5) {
-      throw Boom.unauthorized("Only HR can view pending leave requests");
+    if (userCredentials.role_id !== 5) {
+      throw Boom.forbidden("Only HR can view pending leave requests");
     }
 
     try {
-      const pendingRequests = await leaveRepository
-        .createQueryBuilder("leave")
-        .where("leave.status = :status", { status: LeaveStatus.Pending })
-        .andWhere(
-          "leave.user_id IN (SELECT user_id FROM user WHERE role_id IN (:...roleIds))",
-          {
-            roleIds: [2, 3, 4], // Managers, Employees, Interns
-          }
-        )
-        .leftJoinAndSelect("leave.user", "user")
-        .leftJoinAndSelect("leave.leaveType", "leaveType")
-        .leftJoinAndSelect("leave.approvals", "approvals")
-        .select([
-          "leave.leave_id",
-          "leave.start_date",
-          "leave.end_date",
-          "leave.reason",
-          "leave.status",
-          "leave.applied_at",
-          "user.user_id",
-          "user.name",
-          "user.role_id",
-          "leaveType.type_id",
-          "leaveType.name",
-          "approvals.approver_role_id",
-          "approvals.status",
-        ])
-        .orderBy("leave.applied_at", "ASC")
-        .getMany();
-
-      // Filter for HR-relevant requests (Manager leaves or Employee leaves post-Manager)
-      const hrRequests = pendingRequests.filter((leave) => {
-        const managerApproval = leave.approvals.find(
-          (a) => a.approver_role_id === 3
-        );
-        return (
-          leave.user.role_id === 3 || // Manager leaves
-          (leave.user.role_id === 2 &&
-            managerApproval?.status === LeaveStatus.Approved) // Employee leaves post-Manager
-        );
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const leaves = await leaveRepository.find({
+        where: {
+          status: In([
+            LeaveStatus.Pending,
+            LeaveStatus.Awaiting_Admin_Approval,
+          ]),
+          user: { role_id: In([2, 3, 4]) },
+        },
+        relations: ["user", "leaveType", "approvals"],
+        order: { applied_at: "ASC" },
       });
 
-      return h.response(hrRequests).code(200);
+      const filteredLeaves = leaves.filter((leave) => {
+        const duration = calculateWorkingDays(
+          new Date(leave.start_date),
+          new Date(leave.end_date)
+        );
+        return duration > LEAVE_THRESHOLD_HR || leave.required_approvals > 1;
+      });
+
+      return h.response(filteredLeaves).code(200);
     } catch (error) {
-      console.error("Error fetching pending leave requests:", error);
+      console.error("Error fetching pending leave requests for HR:", error);
       throw Boom.internal(
         "Internal server error fetching pending leave requests"
       );

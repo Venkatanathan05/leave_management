@@ -7,14 +7,18 @@ function Balances() {
   const { user } = useAuth();
   const [balances, setBalances] = useState([]);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const fetchBalances = async () => {
+      setLoading(true);
       try {
         const data = await getLeaveBalances();
         setBalances(data);
       } catch {
         setError("Failed to load balances");
+      } finally {
+        setLoading(false);
       }
     };
     fetchBalances();
@@ -26,6 +30,7 @@ function Balances() {
     <div className="balances-container">
       <h2>Leave Balances</h2>
       {error && <p className="error">{error}</p>}
+      {loading && <p>Loading...</p>}
       {balances.length > 0 ? (
         <table className="balances-table">
           <thead>
@@ -36,8 +41,8 @@ function Balances() {
           </thead>
           <tbody>
             {balances.map((balance, index) => (
-              <tr key={balance.leave_type_id || `balance-${index}`}>
-                <td>{balance.leave_type_name}</td>
+              <tr key={balance.balance_id || `balance-${index}`}>
+                <td>{balance.leaveType?.name || "Unknown"}</td>
                 <td>{balance.available_days}</td>
               </tr>
             ))}

@@ -53,7 +53,12 @@ const leaveRoutes: Hapi.ServerRoute[] = [
         });
         let applyableLeaveTypes: LeaveType[] = [];
 
-        if (user.role_id !== ADMIN_ROLE_ID) {
+        if (user.role_id === INTERN_ROLE_ID) {
+          // Interns only get "Loss of Pay"
+          applyableLeaveTypes = allLeaveTypes.filter(
+            (type) => type.name === "Loss of Pay"
+          );
+        } else if (user.role_id !== ADMIN_ROLE_ID) {
           const rulesForRole = roleInitialBalances[user.role_id] || [];
           const allowedLeaveTypeNames = rulesForRole.map(
             (rule) => rule.leaveTypeName
@@ -168,7 +173,6 @@ const leaveRoutes: Hapi.ServerRoute[] = [
             { managerId: user.user_id, currentUserId: user.user_id }
           );
         } else if (user.role_id === 5) {
-          // HR
           queryBuilder.andWhere("user.role_id IN (:...roleIds)", {
             roleIds: [2, 3, 4], // Employees, Managers, Interns
           });

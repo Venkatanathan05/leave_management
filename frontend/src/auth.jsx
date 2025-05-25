@@ -26,9 +26,24 @@ export function AuthProvider({ children }) {
 
   const login = (token, user) => {
     localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(user));
+    localStorage.setItem(
+      "user",
+      JSON.stringify({
+        user_id: user.user_id,
+        name: user.name,
+        email: user.email,
+        role_id: user.role_id,
+        role_name: user.role_name, // Added
+      })
+    );
     setToken(token);
-    setUser(user);
+    setUser({
+      user_id: user.user_id,
+      name: user.name,
+      email: user.email,
+      role_id: user.role_id,
+      role_name: user.role_name,
+    });
   };
 
   const logout = () => {

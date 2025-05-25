@@ -1,0 +1,111 @@
+.leave-requests {
+  padding: 24px;
+  background-color: #1f2937;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+  color: #e5e7eb;
+  max-width: 1000px;
+  margin: 24px auto;
+}
+
+.leave-requests h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #60a5fa;
+  margin-bottom: 24px;
+}
+
+.requests-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+  background-color: #374151;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.requests-table th,
+.requests-table td {
+  padding: 12px 16px;
+  text-align: left;
+}
+
+.requests-table th {
+  background-color: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+}
+
+.requests-table td {
+  background-color: #374151;
+  color: #d1d5db;
+  border-top: 1px solid #4b5563;
+}
+
+.requests-table tr:hover {
+  background-color: #4b5563;
+}
+
+.approve-btn,
+.reject-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.approve-btn {
+  background-color: #22c55e;
+  color: #ffffff;
+  margin-right: 8px;
+}
+
+.approve-btn:hover {
+  background-color: #16a34a;
+}
+
+.reject-btn {
+  background-color: #ef4444;
+  color: #ffffff;
+}
+
+.reject-btn:hover {
+  background-color: #dc2626;
+}
+
+.approve-btn:disabled,
+.reject-btn:disabled {
+  background-color: #4b5563;
+  cursor: not-allowed;
+}
+
+.error {
+  color: #ef4444;
+  margin: 12px 0;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 600px) {
+  .leave-requests {
+    padding: 16px;
+    margin: 16px;
+  }
+  .requests-table {
+    font-size: 0.75rem;
+  }
+  .requests-table th,
+  .requests-table td {
+    padding: 8px 12px;
+  }
+  .approve-btn,
+  .reject-btn {
+    padding: 4px 8px;
+    font-size: 0.7rem;
+  }
+}

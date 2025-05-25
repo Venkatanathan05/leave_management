@@ -10,6 +10,7 @@ import { User } from "./User";
 
 export enum ApprovalAction {
   Approved = "Approved",
+  Pending = "Pending",
   Rejected = "Rejected",
   Reviewed = "Reviewed",
   Cancelled = "Cancelled",

@@ -12,17 +12,21 @@ function LeaveForm() {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     const fetchLeaveTypes = async () => {
+      setLoading(true);
       try {
         const types = await getLeaveTypes();
         setLeaveTypes(types);
         if (types.length > 0) {
-          setLeaveTypeId(types[0].leave_type_id);
+          setLeaveTypeId(types[0].type_id); // Changed to type_id
         }
       } catch {
         setError("Failed to load leave types");
+      } finally {
+        setLoading(false);
       }
     };
     fetchLeaveTypes();
@@ -32,20 +36,23 @@ function LeaveForm() {
     e.preventDefault();
     setError("");
     setSuccess("");
+    setLoading(true);
     try {
       await applyLeave({
-        leave_type_id: leaveTypeId,
+        type_id: leaveTypeId, // Changed to type_id
         start_date: startDate,
         end_date: endDate,
         reason,
       });
       setSuccess("Leave applied successfully");
-      setLeaveTypeId(leaveTypes[0]?.leave_type_id || "");
+      setLeaveTypeId(leaveTypes[0]?.type_id || "");
       setStartDate("");
       setEndDate("");
       setReason("");
     } catch (err) {
       setError(err.response?.data?.message || "Failed to apply leave");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -54,6 +61,7 @@ function LeaveForm() {
   return (
     <div className="leave-form-container">
       <h2>Apply for Leave</h2>
+      {loading && <p>Loading...</p>}
       <form onSubmit={handleSubmit} className="leave-form">
         <div className="form-group">
           <label htmlFor="leaveType">Leave Type</label>
@@ -62,9 +70,10 @@ function LeaveForm() {
             value={leaveTypeId}
             onChange={(e) => setLeaveTypeId(e.target.value)}
             required
+            disabled={user.role_id === 4 && leaveTypes.length === 1} // Interns: Loss of Pay only
           >
             {leaveTypes.map((type) => (
-              <option key={type.leave_type_id} value={type.leave_type_id}>
+              <option key={type.type_id} value={type.type_id}>
                 {type.name}
               </option>
             ))}
@@ -101,7 +110,9 @@ function LeaveForm() {
         </div>
         {error && <p className="error">{error}</p>}
         {success && <p className="success">{success}</p>}
-        <button type="submit">Submit</button>
+        <button type="submit" disabled={loading}>
+          {loading ? "Submitting..." : "Submit"}
+        </button>
       </form>
     </div>
   );

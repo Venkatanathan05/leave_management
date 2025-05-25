@@ -12,12 +12,11 @@ dotenv.config();
 
 const init = async () => {
   const server = Hapi.server({
-    port: process.env.PORT || 3000,
+    port: process.env.PORT || 5000, // Changed to 5000
     host: "localhost",
     routes: { cors: true },
   });
 
-  // Register JWT authentication
   await server.register(HapiJwt);
   server.auth.strategy("jwt", "jwt", {
     key: process.env.JWT_SECRET || "your_super_secret_jwt_key",
@@ -28,11 +27,9 @@ const init = async () => {
   });
   server.auth.default("jwt");
 
-  // Initialize database
   await AppDataSource.initialize();
   console.log("Database connected");
 
-  // Register routes
   server.route([
     ...authRoutes,
     ...leaveRoutes,
@@ -41,7 +38,6 @@ const init = async () => {
     ...hrRoutes,
   ]);
 
-  // Start server
   await server.start();
   console.log(`Server running on ${server.info.uri}`);
 };

@@ -1,285 +1,349 @@
-import { AppDataSource } from "../data-source";
-import { User } from "../entity/User";
-import { Role } from "../entity/Role";
-import { Leave } from "../entity/Leave";
-import { LeaveApproval } from "../entity/LeaveApproval";
-import { LeaveStatus } from "../entity/Leave";
 import * as Hapi from "@hapi/hapi";
 import * as Boom from "@hapi/boom";
-import { hashPassword } from "../utils/authUtils"; // Assume exists or will be added
-import { Not } from "typeorm";
-
-const userRepository = AppDataSource.getRepository(User);
-const roleRepository = AppDataSource.getRepository(Role);
-const leaveRepository = AppDataSource.getRepository(Leave);
-const leaveApprovalRepository = AppDataSource.getRepository(LeaveApproval);
+import { AppDataSource } from "../data-source";
+import { User } from "../entity/User";
+import { Leave, LeaveStatus } from "../entity/Leave";
+import { LeaveBalance } from "../entity/LeaveBalance";
+import { LeaveApproval, ApprovalAction } from "../entity/LeaveApproval";
+import { Role } from "../entity/Role";
+import {
+  LEAVE_THRESHOLD_HR,
+  LEAVE_THRESHOLD_ADMIN,
+  roleInitialBalances,
+} from "../constants";
+import { calculateWorkingDays } from "../utils/dateUtils";
+import {
+  getRequiredApprovals,
+  checkApprovalStatus,
+} from "../utils/approvalUtils";
+import { hashPassword } from "../utils/authUtils";
+import { LeaveType } from "../entity/LeaveType";
+import { In } from "typeorm";
 
 export class AdminController {
   async createUser(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const user = request.auth.credentials as {
-      user_id: number;
-      role_id: number;
-    };
-    const { name, email, password, role_id, manager_id } = request.payload as {
+    const { name, email, role_id, manager_id } = request.payload as {
       name: string;
       email: string;
-      password: string;
       role_id: number;
       manager_id?: number;
     };
 
-    if (user.role_id !== 1) {
-      throw Boom.unauthorized("Only admins can create users");
+    if (!name || !email || !role_id) {
+      throw Boom.badRequest("Name, email, and role_id are required");
     }
 
     try {
-      // Validate role
-      const role = await roleRepository.findOne({ where: { role_id } });
-      if (!role) {
-        throw Boom.badRequest("Invalid role specified");
+      const userRepository = AppDataSource.getRepository(User);
+      const roleRepository = AppDataSource.getRepository(Role);
+      const leaveBalanceRepository = AppDataSource.getRepository(LeaveBalance);
+
+      const existingUser = await userRepository.findOne({ where: { email } });
+      if (existingUser) {
+        throw Boom.conflict("Email already exists");
       }
 
-      // Validate manager_id for Employees/Interns
-      if ((role_id === 2 || role_id === 4) && manager_id) {
-        const manager = await userRepository.findOne({
+      const role = await roleRepository.findOne({ where: { role_id } });
+      if (!role) {
+        throw Boom.badRequest("Invalid role_id");
+      }
+
+      let manager = null;
+      if (manager_id) {
+        manager = await userRepository.findOne({
           where: { user_id: manager_id, role_id: 3 },
         });
         if (!manager) {
-          throw Boom.badRequest("Invalid manager specified");
+          throw Boom.badRequest("Invalid manager_id or manager role");
         }
-      } else if ((role_id === 2 || role_id === 4) && !manager_id) {
-        throw Boom.badRequest("Manager ID required for Employee/Intern");
       }
 
-      // Check for existing user
-      const existingUser = await userRepository.findOne({ where: { email } });
-      if (existingUser) {
-        throw Boom.conflict("User with this email already exists");
+      const user = new User();
+      user.name = name;
+      user.email = email;
+      user.password_hash = await hashPassword("defaultPassword123"); // Use authUtils
+      user.role_id = role_id;
+      user.manager_id = manager_id || null;
+
+      const savedUser = await userRepository.save(user);
+
+      const currentYear = new Date().getFullYear();
+      const balancesToCreate = roleInitialBalances[role_id] || [];
+      const leaveBalances: LeaveBalance[] = [];
+
+      for (const rule of balancesToCreate) {
+        const leaveType = await AppDataSource.getRepository(LeaveType).findOne({
+          where: { name: rule.leaveTypeName },
+        });
+        if (leaveType) {
+          const leaveBalance = new LeaveBalance();
+          leaveBalance.user_id = savedUser.user_id;
+          leaveBalance.type_id = leaveType.type_id;
+          leaveBalance.year = currentYear;
+          leaveBalance.total_days = rule.initialDays;
+          leaveBalance.used_days = 0;
+          leaveBalance.available_days = rule.initialDays;
+          leaveBalances.push(leaveBalance);
+        }
       }
 
-      // Create user
-      const newUser = new User();
-      newUser.name = name;
-      newUser.email = email;
-      newUser.password_hash = await hashPassword(password); // Assume hashPassword utility
-      newUser.role_id = role_id;
-      newUser.manager_id = manager_id || null;
-      await userRepository.save(newUser);
+      if (leaveBalances.length > 0) {
+        await leaveBalanceRepository.save(leaveBalances);
+      }
 
       return h
         .response({
           message: "User created successfully",
-          user_id: newUser.user_id,
+          user: {
+            user_id: savedUser.user_id,
+            name: savedUser.name,
+            email: savedUser.email,
+            role_id: savedUser.role_id,
+            manager_id: savedUser.manager_id,
+          },
         })
         .code(201);
     } catch (error) {
+      if (Boom.isBoom(error)) throw error;
       console.error("Error creating user:", error);
       throw Boom.internal("Internal server error creating user");
     }
   }
 
   async deleteUser(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const user = request.auth.credentials as {
+    const userId = parseInt(request.params.user_id, 10);
+    const userCredentials = request.auth.credentials as {
       user_id: number;
       role_id: number;
     };
-    const { user_id: targetUserId } = request.params;
 
-    if (user.role_id !== 1) {
-      throw Boom.unauthorized("Only admins can delete users");
+    if (isNaN(userId)) {
+      throw Boom.badRequest("Invalid user ID");
+    }
+
+    if (userCredentials.user_id === userId) {
+      throw Boom.forbidden("Cannot delete your own account");
     }
 
     try {
-      const targetUser = await userRepository.findOne({
-        where: { user_id: parseInt(targetUserId) },
-        relations: ["role"],
-      });
+      const userRepository = AppDataSource.getRepository(User);
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const leaveBalanceRepository = AppDataSource.getRepository(LeaveBalance);
 
-      if (!targetUser) {
+      const user = await userRepository.findOne({ where: { user_id: userId } });
+      if (!user) {
         throw Boom.notFound("User not found");
       }
 
-      // Prevent self-deletion
-      if (targetUser.user_id === user.user_id) {
-        throw Boom.forbidden("Cannot delete own account");
+      const pendingLeaves = await leaveRepository.count({
+        where: {
+          user_id: userId,
+          status: In([
+            LeaveStatus.Pending,
+            LeaveStatus.Awaiting_Admin_Approval,
+          ]),
+        },
+      });
+      if (pendingLeaves > 0) {
+        throw Boom.conflict("Cannot delete user with pending leave requests");
       }
 
-      // Handle Manager deletion
-      if (targetUser.role_id === 3) {
-        const employees = await userRepository.count({
-          where: { manager_id: targetUser.user_id },
-        });
-        if (employees > 0) {
-          const otherManagers = await userRepository.find({
-            where: { role_id: 3, user_id: Not(targetUser.user_id) },
-          });
-          if (otherManagers.length === 0) {
-            throw Boom.forbidden(
-              "Cannot delete manager with assigned employees and no other managers available"
-            );
-          }
-          // Reassign employees to a random manager
-          const newManager =
-            otherManagers[Math.floor(Math.random() * otherManagers.length)];
-          await userRepository.update(
-            { manager_id: targetUser.user_id },
-            { manager_id: newManager.user_id }
-          );
-        }
-      }
+      await leaveBalanceRepository.delete({ user_id: userId });
+      await leaveRepository.delete({ user_id: userId });
+      await userRepository.delete(userId);
 
-      // Handle HR deletion
-      if (targetUser.role_id === 5) {
-        const otherHRs = await userRepository.count({
-          where: { role_id: 5, user_id: Not(targetUser.user_id) },
-        });
-        if (otherHRs === 0) {
-          throw Boom.forbidden("Cannot delete the last HR");
-        }
-      }
-
-      await userRepository.delete({ user_id: targetUser.user_id });
       return h.response({ message: "User deleted successfully" }).code(200);
     } catch (error) {
+      if (Boom.isBoom(error)) throw error;
       console.error("Error deleting user:", error);
       throw Boom.internal("Internal server error deleting user");
     }
   }
 
+  async getAllUsers(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    try {
+      const userRepository = AppDataSource.getRepository(User);
+      const users = await userRepository.find({
+        select: ["user_id", "name", "email", "role_id", "manager_id"],
+        relations: ["role"],
+      });
+
+      return h
+        .response(
+          users.map((user) => ({
+            user_id: user.user_id,
+            name: user.name,
+            email: user.email,
+            role_id: user.role_id,
+            role_name: user.role.name,
+            manager_id: user.manager_id,
+          }))
+        )
+        .code(200);
+    } catch (error) {
+      console.error("Error fetching all users:", error);
+      throw Boom.internal("Internal server error fetching users");
+    }
+  }
+
   async approveLeaveRequest(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const user = request.auth.credentials as {
+    const leaveId = parseInt(request.params.leave_id, 10);
+    const userCredentials = request.auth.credentials as {
       user_id: number;
       role_id: number;
     };
-    const { leave_id } = request.params;
-    const { comment } = request.payload as { comment?: string };
+    const payload = request.payload as { comments?: string };
 
-    if (user.role_id !== 1) {
-      throw Boom.unauthorized("Only admins can approve leave requests");
+    if (isNaN(leaveId)) {
+      throw Boom.badRequest("Invalid leave ID");
     }
 
     try {
-      const leave = await leaveRepository.findOne({
-        where: { leave_id: parseInt(leave_id) },
-        relations: ["user", "approvals"],
-      });
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const leaveApprovalRepository =
+        AppDataSource.getRepository(LeaveApproval);
 
+      const leave = await leaveRepository.findOne({
+        where: { leave_id: leaveId },
+        relations: ["user", "leaveType", "approvals"],
+      });
       if (!leave) {
         throw Boom.notFound("Leave request not found");
       }
 
-      // Verify Admin-level approval is required
-      const managerApproval = leave.approvals.find(
-        (a) => a.approver_role_id === 3
-      );
-      const hrApproval = leave.approvals.find((a) => a.approver_role_id === 5);
-      const requiresAdmin =
-        leave.user.role_id === 5 || // HR leaves
-        (leave.user.role_id === 3 &&
-          hrApproval?.status === LeaveStatus.Approved) || // Manager leaves post-HR
-        (leave.user.role_id === 2 &&
-          hrApproval?.status === LeaveStatus.Approved); // Employee leaves post-HR
-
-      if (!requiresAdmin) {
-        throw Boom.forbidden("Admin approval not required for this leave");
+      if (
+        leave.status !== LeaveStatus.Awaiting_Admin_Approval &&
+        leave.user.role_id !== 3 &&
+        leave.user.role_id !== 5
+      ) {
+        throw Boom.forbidden(
+          "Not authorized to approve this leave or leave not awaiting Admin approval"
+        );
       }
 
-      // Create approval record
-      const approval = new LeaveApproval();
-      approval.leave = leave;
-      approval.approver_id = user.user_id;
-      approval.approver_role_id = user.role_id;
-      approval.status = LeaveStatus.Approved;
-      approval.comments = comment || "Approved by admin";
-      approval.approved_at = new Date();
+      const existingApproval = await leaveApprovalRepository.findOne({
+        where: { leave_id: leaveId, approver_id: userCredentials.user_id },
+      });
+      if (
+        existingApproval &&
+        existingApproval.action === ApprovalAction.Approved
+      ) {
+        throw Boom.conflict("Leave already approved by you");
+      }
 
-      await leaveApprovalRepository.save(approval);
+      const newApproval = new LeaveApproval();
+      newApproval.leave_id = leaveId;
+      newApproval.approver_id = userCredentials.user_id;
+      newApproval.approver_role_id = userCredentials.role_id;
+      newApproval.action = ApprovalAction.Approved;
+      newApproval.comments = payload.comments || "";
+      newApproval.approved_at = new Date();
 
-      // Update leave status
-      leave.status = LeaveStatus.Approved;
+      await leaveApprovalRepository.save(newApproval);
+
+      const updatedApprovals = [...leave.approvals, newApproval];
+      const { status, processed } = checkApprovalStatus(
+        leave,
+        updatedApprovals
+      );
+
+      leave.status = status;
       await leaveRepository.save(leave);
 
-      return h.response({ message: "Leave request approved" }).code(200);
+      if (processed && status === LeaveStatus.Approved) {
+        const leaveBalanceRepository =
+          AppDataSource.getRepository(LeaveBalance);
+        const duration = calculateWorkingDays(
+          new Date(leave.start_date),
+          new Date(leave.end_date)
+        );
+        const balance = await leaveBalanceRepository.findOne({
+          where: {
+            user_id: leave.user_id,
+            type_id: leave.type_id,
+            year: new Date().getFullYear(),
+          },
+        });
+        if (balance && leave.leaveType.is_balance_based) {
+          balance.used_days += duration;
+          balance.available_days = balance.total_days - balance.used_days;
+          await leaveBalanceRepository.save(balance);
+        }
+      }
+
+      return h
+        .response({ message: `Leave ${status.toLowerCase()} successfully` })
+        .code(200);
     } catch (error) {
+      if (Boom.isBoom(error)) throw error;
       console.error("Error approving leave request:", error);
-      throw Boom.internal("Internal server error approving leave request");
+      throw Boom.internal("Internal server error approving leave");
     }
   }
 
   async rejectLeaveRequest(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const user = request.auth.credentials as {
+    const leaveId = parseInt(request.params.leave_id, 10);
+    const userCredentials = request.auth.credentials as {
       user_id: number;
       role_id: number;
     };
-    const { leave_id } = request.params;
-    const { comment } = request.payload as { comment?: string };
+    const payload = request.payload as { comments?: string };
 
-    if (user.role_id !== 1) {
-      throw Boom.unauthorized("Only admins can reject leave requests");
+    if (isNaN(leaveId)) {
+      throw Boom.badRequest("Invalid leave ID");
     }
 
     try {
-      const leave = await leaveRepository.findOne({
-        where: { leave_id: parseInt(leave_id) },
-        relations: ["user"],
-      });
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const leaveApprovalRepository =
+        AppDataSource.getRepository(LeaveApproval);
 
+      const leave = await leaveRepository.findOne({
+        where: { leave_id: leaveId },
+        relations: ["user", "approvals"],
+      });
       if (!leave) {
         throw Boom.notFound("Leave request not found");
       }
 
-      // Create rejection record
-      const approval = new LeaveApproval();
-      approval.leave = leave;
-      approval.approver_id = user.user_id;
-      approval.approver_role_id = user.role_id;
-      approval.status = LeaveStatus.Rejected;
-      approval.comments = comment || "Rejected by admin";
-      approval.approved_at = new Date();
+      if (
+        leave.status !== LeaveStatus.Awaiting_Admin_Approval &&
+        leave.user.role_id !== 3 &&
+        leave.user.role_id !== 5
+      ) {
+        throw Boom.forbidden(
+          "Not authorized to reject this leave or leave not awaiting Admin approval"
+        );
+      }
 
-      await leaveApprovalRepository.save(approval);
+      const existingApproval = await leaveApprovalRepository.findOne({
+        where: { leave_id: leaveId, approver_id: userCredentials.user_id },
+      });
+      if (
+        existingApproval &&
+        existingApproval.action === ApprovalAction.Rejected
+      ) {
+        throw Boom.conflict("Leave already rejected by you");
+      }
 
-      // Update leave status
+      const newApproval = new LeaveApproval();
+      newApproval.leave_id = leaveId;
+      newApproval.approver_id = userCredentials.user_id;
+      newApproval.approver_role_id = userCredentials.role_id;
+      newApproval.action = ApprovalAction.Rejected;
+      newApproval.comments = payload.comments || "";
+      newApproval.approved_at = new Date();
+
+      await leaveApprovalRepository.save(newApproval);
+
       leave.status = LeaveStatus.Rejected;
       await leaveRepository.save(leave);
 
-      return h.response({ message: "Leave request rejected" }).code(200);
+      return h.response({ message: "Leave rejected successfully" }).code(200);
     } catch (error) {
+      if (Boom.isBoom(error)) throw error;
       console.error("Error rejecting leave request:", error);
-      throw Boom.internal("Internal server error rejecting leave request");
-    }
-  }
-
-  async getAllUsers(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const user = request.auth.credentials as {
-      user_id: number;
-      role_id: number;
-    };
-
-    if (user.role_id !== 1) {
-      throw Boom.unauthorized("Only admins can view all users");
-    }
-
-    try {
-      const users = await userRepository
-        .createQueryBuilder("user")
-        .leftJoinAndSelect("user.role", "role")
-        .leftJoinAndSelect("user.manager", "manager")
-        .select([
-          "user.user_id",
-          "user.name",
-          "user.email",
-          "user.role_id",
-          "role.name",
-          "manager.user_id",
-          "manager.name",
-        ])
-        .getMany();
-
-      return h.response(users).code(200);
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      throw Boom.internal("Internal server error fetching users");
+      throw Boom.internal("Internal server error rejecting leave");
     }
   }
 }
