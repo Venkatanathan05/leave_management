@@ -5,6 +5,8 @@ import {
   getTeamUsers,
   getMyLeaves,
   getLeaveBalances,
+  getAllUsers,
+  deleteUser,
 } from "../api.js";
 import "../styles/UserViewCard.css";
 
@@ -16,6 +18,7 @@ function UserViewCard() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [leaves, setLeaves] = useState([]);
   const [balances, setBalances] = useState([]);
+  const [showConfirm, setShowConfirm] = useState(null);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -23,16 +26,18 @@ function UserViewCard() {
       try {
         let data;
         if (user.role_id === 5) {
-          data = await getHRUsers(); // Employees, Managers, Interns
+          data = await getHRUsers();
         } else if (user.role_id === 3) {
-          data = await getTeamUsers(); // Employees under Manager
+          data = await getTeamUsers();
         } else if (user.role_id === 1) {
-          // Admin: getAllUsers (to be implemented)
-          data = [];
+          data = await getAllUsers();
         }
         setUsers(data);
-      } catch {
-        setError("Failed to load users");
+      } catch (err) {
+        setError(
+          err.response?.data?.message ||
+            "Failed to load users. Please try again."
+        );
       } finally {
         setLoading(false);
       }
@@ -46,8 +51,8 @@ function UserViewCard() {
     setLoading(true);
     try {
       const [leaveData, balanceData] = await Promise.all([
-        getMyLeaves(userId), // Assumes endpoint supports userId
-        getLeaveBalances(userId), // Assumes endpoint supports userId
+        getMyLeaves(userId),
+        getLeaveBalances(userId),
       ]);
       setLeaves(leaveData);
       setBalances(balanceData);
@@ -55,6 +60,17 @@ function UserViewCard() {
       setError("Failed to load user details");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async (userId) => {
+    try {
+      await deleteUser(userId);
+      setUsers(users.filter((u) => u.user_id !== userId));
+      if (selectedUser === userId) setSelectedUser(null);
+      setShowConfirm(null);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to delete user");
     }
   };
 
@@ -73,17 +89,54 @@ function UserViewCard() {
               className={`user-item ${
                 selectedUser === u.user_id ? "selected" : ""
               }`}
-              onClick={() => handleUserClick(u.user_id)}
             >
-              <span>
-                {u.name} ({u.role_name})
-              </span>
-              <span>{u.email}</span>
+              <div
+                className="user-info"
+                onClick={() => handleUserClick(u.user_id)}
+              >
+                <span>
+                  {u.name} ({u.role_name})
+                </span>
+                <span>{u.email}</span>
+              </div>
+              {user.role_id === 1 && u.user_id !== user.user_id && (
+                <button
+                  className="delete-button"
+                  onClick={() => setShowConfirm(u.user_id)}
+                >
+                  Delete
+                </button>
+              )}
             </div>
           ))}
         </div>
       ) : (
         <p>No users available</p>
+      )}
+      {showConfirm && (
+        <div className="confirm-modal">
+          <div className="confirm-content">
+            <h3>Confirm Deletion</h3>
+            <p>
+              Are you sure you want to delete{" "}
+              {users.find((u) => u.user_id === showConfirm)?.name}?
+            </p>
+            <div className="confirm-buttons">
+              <button
+                className="confirm-button"
+                onClick={() => handleDelete(showConfirm)}
+              >
+                Yes
+              </button>
+              <button
+                className="cancel-button"
+                onClick={() => setShowConfirm(null)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {selectedUser && (
         <div className="user-details">

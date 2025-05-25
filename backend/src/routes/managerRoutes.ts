@@ -9,45 +9,31 @@ const managerRoutes: Hapi.ServerRoute[] = [
     path: "/api/manager/pending-requests",
     handler: (request, h) =>
       managerController.getPendingLeaveRequests(request, h),
-    options: {
-      auth: {
-        strategy: "jwt",
-        scope: ["Manager", "Admin"],
-      },
-    },
+    options: { auth: "jwt" },
   },
   {
     method: "POST",
     path: "/api/manager/leave-requests/{leave_id}/approve",
     handler: (request, h) => managerController.approveLeaveRequest(request, h),
-    options: {
-      auth: {
-        strategy: "jwt",
-        scope: ["Manager"],
-      },
-    },
+    options: { auth: "jwt" },
   },
   {
     method: "POST",
     path: "/api/manager/leave-requests/{leave_id}/reject",
     handler: (request, h) => managerController.rejectLeaveRequest(request, h),
-    options: {
-      auth: {
-        strategy: "jwt",
-        scope: ["Manager"],
-      },
-    },
+    options: { auth: "jwt" },
   },
   {
     method: "GET",
     path: "/api/manager/team-availability",
     handler: (request, h) => managerController.getTeamAvailability(request, h),
-    options: {
-      auth: {
-        strategy: "jwt",
-        scope: ["Manager"],
-      },
-    },
+    options: { auth: "jwt" },
+  },
+  {
+    method: "GET",
+    path: "/api/manager/team-users",
+    handler: (request, h) => managerController.getUsers(request, h),
+    options: { auth: "jwt" },
   },
 ];
 

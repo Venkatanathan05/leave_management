@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../authContext.jsx";
 import {
+  getHRPendingRequests,
   approveHRLeave,
   rejectHRLeave,
   approveManagerLeave,
@@ -18,31 +19,28 @@ function LeaveRequests() {
     const fetchRequests = async () => {
       setLoading(true);
       try {
-        // Placeholder: Assumes /api/hr/pending-requests or /api/manager/pending-requests
-        const response = await fetch(
-          `/api/${user.role_id === 5 ? "hr" : "manager"}/pending-requests`,
-          {
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-          }
-        );
-        const data = await response.json();
+        let data = [];
+        if (user.role_id === 5) {
+          data = await getHRPendingRequests();
+        } else if (user.role_id === 3) {
+          // Manager endpoint (to be implemented)
+          data = [];
+        } else if (user.role_id === 1) {
+          // Admin endpoint (to be implemented)
+          data = [];
+        }
         setRequests(data);
+        setError(data.length === 0 ? "No pending requests" : "");
       } catch {
-        setError("Failed to load leave requests");
+        setError("Failed to load requests. Please try again.");
       } finally {
         setLoading(false);
       }
     };
-    if ([3, 5].includes(user.role_id)) {
-      fetchRequests();
-    }
+    if ([1, 3, 5].includes(user.role_id)) fetchRequests();
   }, [user]);
 
   const handleApprove = async (leaveId) => {
-    setError("");
-    setLoading(true);
     try {
       if (user.role_id === 5) {
         await approveHRLeave(leaveId, "");
@@ -51,15 +49,11 @@ function LeaveRequests() {
       }
       setRequests(requests.filter((req) => req.leave_id !== leaveId));
     } catch {
-      setError("Failed to approve leave");
-    } finally {
-      setLoading(false);
+      setError("Failed to approve request");
     }
   };
 
   const handleReject = async (leaveId) => {
-    setError("");
-    setLoading(true);
     try {
       if (user.role_id === 5) {
         await rejectHRLeave(leaveId, "");
@@ -68,18 +62,20 @@ function LeaveRequests() {
       }
       setRequests(requests.filter((req) => req.leave_id !== leaveId));
     } catch {
-      setError("Failed to reject leave");
-    } finally {
-      setLoading(false);
+      setError("Failed to reject request");
     }
   };
 
-  if (!user || ![3, 5].includes(user.role_id)) return null;
+  if (!user || ![1, 3, 5].includes(user.role_id)) return null;
 
   return (
     <div className="leave-requests">
-      <h2>Leave Requests</h2>
-      {error && <p className="error">{error}</p>}
+      <h2>Pending Leave Requests</h2>
+      {error && (
+        <p className={error === "No pending requests" ? "info" : "error"}>
+          {error}
+        </p>
+      )}
       {loading && <p>Loading...</p>}
       {requests.length > 0 ? (
         <table className="requests-table">
@@ -89,31 +85,23 @@ function LeaveRequests() {
               <th>Leave Type</th>
               <th>Start Date</th>
               <th>End Date</th>
-              <th>Reason</th>
+              <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {requests.map((req, index) => (
-              <tr key={req.leave_id || `req-${index}`}>
+            {requests.map((req) => (
+              <tr key={req.leave_id}>
                 <td>{req.user?.name || "Unknown"}</td>
                 <td>{req.leaveType?.name || "Unknown"}</td>
                 <td>{new Date(req.start_date).toLocaleDateString()}</td>
                 <td>{new Date(req.end_date).toLocaleDateString()}</td>
-                <td>{req.reason}</td>
+                <td>{req.status}</td>
                 <td>
-                  <button
-                    className="approve-btn"
-                    onClick={() => handleApprove(req.leave_id)}
-                    disabled={loading}
-                  >
+                  <button onClick={() => handleApprove(req.leave_id)}>
                     Approve
                   </button>
-                  <button
-                    className="reject-btn"
-                    onClick={() => handleReject(req.leave_id)}
-                    disabled={loading}
-                  >
+                  <button onClick={() => handleReject(req.leave_id)}>
                     Reject
                   </button>
                 </td>
@@ -122,7 +110,7 @@ function LeaveRequests() {
           </tbody>
         </table>
       ) : (
-        <p>No pending requests</p>
+        !loading && !error && <p>No pending requests</p>
       )}
     </div>
   );

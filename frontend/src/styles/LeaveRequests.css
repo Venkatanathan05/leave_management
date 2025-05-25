@@ -49,44 +49,41 @@
   background-color: #4b5563;
 }
 
-.approve-btn,
-.reject-btn {
+.requests-table button {
   padding: 6px 12px;
+  margin-right: 8px;
   border: none;
   border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
+  font-size: 0.875rem;
   cursor: pointer;
-  transition: background-color 0.2s;
 }
 
-.approve-btn {
-  background-color: #22c55e;
+.requests-table button:first-child {
+  background-color: #10b981;
   color: #ffffff;
-  margin-right: 8px;
 }
 
-.approve-btn:hover {
-  background-color: #16a34a;
+.requests-table button:first-child:hover {
+  background-color: #059669;
 }
 
-.reject-btn {
+.requests-table button:last-child {
   background-color: #ef4444;
   color: #ffffff;
 }
 
-.reject-btn:hover {
+.requests-table button:last-child:hover {
   background-color: #dc2626;
-}
-
-.approve-btn:disabled,
-.reject-btn:disabled {
-  background-color: #4b5563;
-  cursor: not-allowed;
 }
 
 .error {
   color: #ef4444;
+  margin: 12px 0;
+  font-size: 0.875rem;
+}
+
+.info {
+  color: #d1d5db;
   margin: 12px 0;
   font-size: 0.875rem;
 }
@@ -96,16 +93,14 @@
     padding: 16px;
     margin: 16px;
   }
+  .leave-requests h2 {
+    font-size: 1.25rem;
+  }
   .requests-table {
     font-size: 0.75rem;
   }
   .requests-table th,
   .requests-table td {
     padding: 8px 12px;
-  }
-  .approve-btn,
-  .reject-btn {
-    padding: 4px 8px;
-    font-size: 0.7rem;
   }
 }

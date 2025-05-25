@@ -10,14 +10,23 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    console.log("API request:", config.url, {
+      token: token ? "present" : "missing",
+    });
     return config;
   },
   (error) => Promise.reject(error)
 );
 
 export const loginUser = async (email, password) => {
-  const response = await api.post("/auth/login", { email, password });
-  return response.data;
+  try {
+    console.log("Login payload:", { email, password });
+    const response = await api.post("/auth/login", { email, password });
+    return response.data;
+  } catch (error) {
+    console.error("Login error:", error.response?.data || error.message);
+    throw error;
+  }
 };
 
 export const getLeaveTypes = async () => {
@@ -30,13 +39,15 @@ export const applyLeave = async (leaveData) => {
   return response.data;
 };
 
-export const getLeaveBalances = async () => {
-  const response = await api.get("/leaves/balance");
+export const getLeaveBalances = async (userId) => {
+  const endpoint = userId ? `/leaves/balance/${userId}` : "/leaves/balance";
+  const response = await api.get(endpoint);
   return response.data;
 };
 
-export const getMyLeaves = async () => {
-  const response = await api.get("/leaves/my");
+export const getMyLeaves = async (userId) => {
+  const endpoint = userId ? `/leaves/my/${userId}` : "/leaves/my";
+  const response = await api.get(endpoint);
   return response.data;
 };
 
@@ -47,8 +58,13 @@ export const getLeaveAvailability = async () => {
 
 // HR endpoints
 export const getHRUsers = async () => {
-  const response = await api.get("/hr/users");
-  return response.data;
+  try {
+    const response = await api.get("/hr/users");
+    return response.data;
+  } catch (error) {
+    console.error("getHRUsers error:", error.response?.data);
+    throw error;
+  }
 };
 
 export const approveHRLeave = async (leaveId, comments) => {
@@ -67,8 +83,13 @@ export const rejectHRLeave = async (leaveId, comments) => {
 
 // Manager endpoints
 export const getTeamUsers = async () => {
-  const response = await api.get("/manager/team-users"); // Assumes new endpoint
-  return response.data;
+  try {
+    const response = await api.get("/manager/team-users");
+    return response.data;
+  } catch (error) {
+    console.error("getTeamUsers error:", error.response?.data);
+    throw error;
+  }
 };
 
 export const approveManagerLeave = async (leaveId, comments) => {
@@ -87,6 +108,34 @@ export const rejectManagerLeave = async (leaveId, comments) => {
 };
 
 // Admin endpoints
+export const getAllUsers = async () => {
+  try {
+    const response = await api.get("/admin/users");
+    console.log("getAllUsers response:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error("getAllUsers error:", error.response?.data || error.message, {
+      status: error.response?.status,
+    });
+    throw error;
+  }
+};
+
+// Add for HR pending requests
+export const getHRPendingRequests = async () => {
+  try {
+    const response = await api.get("/hr/leave-requests/pending");
+    console.log("getHRPendingRequests response:", response.data); // Debug
+    return response.data;
+  } catch (error) {
+    console.error(
+      "getHRPendingRequests error:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
 export const createUser = async (userData) => {
   const response = await api.post("/admin/users", userData);
   return response.data;

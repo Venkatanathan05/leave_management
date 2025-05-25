@@ -7,6 +7,9 @@ import LeaveForm from "../components/LeaveForm.jsx";
 import Balances from "../components/Balances.jsx";
 import MyLeaves from "../components/MyLeaves.jsx";
 import Calendar from "../components/Calendar.jsx";
+import UserViewCard from "../components/UserViewCard.jsx";
+import LeaveRequests from "../components/LeaveRequests.jsx";
+import UserCreationForm from "../components/UserCreationForm.jsx";
 import "../styles/DashboardPage.css";
 
 function DashboardPage() {
@@ -28,23 +31,26 @@ function DashboardPage() {
             <Route path="balances" element={<Balances />} />
             <Route path="my-leaves" element={<MyLeaves />} />
             <Route path="calendar" element={<Calendar />} />
-            {/* Placeholder routes for Admin/HR/Manager */}
-            <Route
-              path="users"
-              element={<div>Users (to be implemented)</div>}
-            />
-            <Route
-              path="leave-types"
-              element={<div>Leave Types (to be implemented)</div>}
-            />
-            <Route
-              path="approvals"
-              element={<div>Approvals (to be implemented)</div>}
-            />
-            <Route
-              path="team-requests"
-              element={<div>Team Requests (to be implemented)</div>}
-            />
+            {user.role_id === 1 && (
+              <>
+                <Route path="users" element={<UserViewCard />} />
+                <Route path="approvals" element={<LeaveRequests />} />
+                <Route path="user-creation" element={<UserCreationForm />} />
+              </>
+            )}
+            {user.role_id === 5 && (
+              <>
+                <Route path="users" element={<UserViewCard />} />
+                <Route path="approvals" element={<LeaveRequests />} />
+              </>
+            )}
+            {user.role_id === 3 && (
+              <>
+                <Route path="team-requests" element={<LeaveRequests />} />
+                <Route path="users" element={<UserViewCard />} />
+              </>
+            )}
+            {/* Remove placeholder routes */}
           </Routes>
         </div>
       </div>

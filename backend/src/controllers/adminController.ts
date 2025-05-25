@@ -19,7 +19,6 @@ import {
 import { hashPassword } from "../utils/authUtils";
 import { LeaveType } from "../entity/LeaveType";
 import { In } from "typeorm";
-
 export class AdminController {
   async createUser(request: Hapi.Request, h: Hapi.ResponseToolkit) {
     const { name, email, role_id, manager_id } = request.payload as {
@@ -161,6 +160,16 @@ export class AdminController {
   }
 
   async getAllUsers(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    const userCredentials = request.auth.credentials as {
+      user_id: number;
+      role_id: number;
+    };
+    console.log("getAllUsers:", { role_id: userCredentials.role_id }); // Debug
+
+    if (userCredentials.role_id !== 1) {
+      throw Boom.forbidden("Only Admin can view all users");
+    }
+
     try {
       const userRepository = AppDataSource.getRepository(User);
       const users = await userRepository.find({

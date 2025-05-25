@@ -1,0 +1,89 @@
+.user-creation-form {
+  padding: 24px;
+  background-color: #1f2937;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+  color: #e5e7eb;
+  max-width: 500px;
+  margin: 24px auto;
+}
+
+.user-creation-form h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #60a5fa;
+  margin-bottom: 24px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #d1d5db;
+  margin-bottom: 8px;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 8px 12px;
+  background-color: #374151;
+  border: 1px solid #4b5563;
+  border-radius: 4px;
+  color: #e5e7eb;
+  font-size: 0.875rem;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+button {
+  padding: 8px 16px;
+  background-color: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+button:hover {
+  background-color: #1d4ed8;
+}
+
+button:disabled {
+  background-color: #6b7280;
+  cursor: not-allowed;
+}
+
+.error {
+  color: #ef4444;
+  margin: 12px 0;
+  font-size: 0.875rem;
+}
+
+.success {
+  color: #10b981;
+  margin: 12px 0;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 600px) {
+  .user-creation-form {
+    padding: 16px;
+    margin: 16px;
+  }
+  .user-creation-form h2 {
+    font-size: 1.25rem;
+  }
+}

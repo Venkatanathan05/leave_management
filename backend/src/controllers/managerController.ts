@@ -10,6 +10,41 @@ import { checkApprovalStatus } from "../utils/approvalUtils";
 import { In, LessThanOrEqual, MoreThanOrEqual } from "typeorm";
 
 export class ManagerController {
+  async getUsers(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    const userCredentials = request.auth.credentials as {
+      user_id: number;
+      role_id: number;
+    };
+
+    if (userCredentials.role_id !== 3) {
+      throw Boom.forbidden("Only Managers can view team users");
+    }
+
+    try {
+      const userRepository = AppDataSource.getRepository(User);
+      const users = await userRepository.find({
+        where: { manager_id: userCredentials.user_id, role_id: In([2, 4]) }, // Employees, Interns
+        select: ["user_id", "name", "email", "role_id", "manager_id"],
+        relations: ["role"],
+      });
+
+      return h
+        .response(
+          users.map((user) => ({
+            user_id: user.user_id,
+            name: user.name,
+            email: user.email,
+            role_id: user.role_id,
+            role_name: user.role.name,
+            manager_id: user.manager_id,
+          }))
+        )
+        .code(200);
+    } catch (error) {
+      console.error("Error fetching team users:", error);
+      throw Boom.internal("Internal server error fetching team users");
+    }
+  }
   async getPendingLeaveRequests(
     request: Hapi.Request,
     h: Hapi.ResponseToolkit
