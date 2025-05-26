@@ -250,12 +250,6 @@ const leaveRoutes: Hapi.ServerRoute[] = [
   },
   {
     method: "GET",
-    path: "/api/leaves/calendar",
-    handler: (request, h) => leaveController.getCalendarData(request, h),
-    options: { auth: "jwt" },
-  },
-  {
-    method: "GET",
     path: "/api/holidays",
     handler: (request, h) => leaveController.getHolidays(request, h),
     options: { auth: "jwt" },

@@ -22,6 +22,7 @@ function LeaveRequests() {
   useEffect(() => {
     const fetchRequests = async () => {
       setLoading(true);
+      setError("");
       try {
         let data = [];
         if (user.role_id === 5) {
@@ -32,7 +33,6 @@ function LeaveRequests() {
           data = await getAdminPendingRequests();
         }
         setRequests(data);
-        setError(data.length === 0 ? "No pending requests" : "");
       } catch {
         setError("Failed to load requests. Please try again.");
       } finally {
@@ -77,12 +77,8 @@ function LeaveRequests() {
   return (
     <div className="leave-requests">
       <h2>Pending Leave Requests</h2>
-      {error && (
-        <p className={error === "No pending requests" ? "info" : "error"}>
-          {error}
-        </p>
-      )}
       {loading && <p>Loading...</p>}
+      {error && <p className="error">{error}</p>}
       {requests.length > 0 ? (
         <table className="requests-table">
           <thead>
@@ -116,7 +112,7 @@ function LeaveRequests() {
           </tbody>
         </table>
       ) : (
-        !loading && <p className="info">No pending requests</p>
+        !loading && !error && <p className="info">No pending requests</p>
       )}
     </div>
   );

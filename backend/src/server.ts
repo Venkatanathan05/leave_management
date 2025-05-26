@@ -16,6 +16,7 @@ const init = async () => {
         origin: ["http://localhost:5173"],
         headers: ["Accept", "Authorization", "Content-Type", "If-None-Match"],
         additionalHeaders: ["cache-control", "x-requested-with"],
+        credentials: true,
       },
     },
   });
@@ -30,7 +31,7 @@ const init = async () => {
       sub: false,
       nbf: true,
       exp: true,
-      maxAgeSec: 24 * 60 * 60, // 1 day
+      maxAgeSec: 24 * 60 * 60,
       timeSkewSec: 15,
     },
     validate: (artifacts, request, h) => {
@@ -38,7 +39,7 @@ const init = async () => {
         user_id: artifacts.decoded.payload.user_id,
         role_id: artifacts.decoded.payload.role_id,
         scope: artifacts.decoded.payload.scope,
-      }); // Debug
+      });
       return {
         isValid: true,
         credentials: {
@@ -48,6 +49,13 @@ const init = async () => {
         },
       };
     },
+  });
+
+  server.ext("onPreAuth", (request, h) => {
+    if (request.method === "options") {
+      return h.continue;
+    }
+    return h.continue;
   });
 
   server.auth.default("jwt");

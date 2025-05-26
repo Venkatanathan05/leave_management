@@ -67,6 +67,20 @@ export const getHRUsers = async () => {
   }
 };
 
+export const getHRPendingRequests = async () => {
+  try {
+    const response = await api.get("/hr/leave-requests/pending");
+    console.log("getHRPendingRequests response:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error(
+      "getHRPendingRequests error:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
 export const approveHRLeave = async (leaveId, comments) => {
   const response = await api.post(`/hr/leave-requests/${leaveId}/approve`, {
     comments,
@@ -88,6 +102,20 @@ export const getTeamUsers = async () => {
     return response.data;
   } catch (error) {
     console.error("getTeamUsers error:", error.response?.data);
+    throw error;
+  }
+};
+
+export const getManagerPendingRequests = async () => {
+  try {
+    const response = await api.get("/manager/pending-requests");
+    console.log("getManagerPendingRequests response:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error(
+      "getManagerPendingRequests error:",
+      error.response?.data || error.message
+    );
     throw error;
   }
 };
@@ -121,43 +149,14 @@ export const getAllUsers = async () => {
   }
 };
 
-// Add for HR pending requests
-export const getHRPendingRequests = async () => {
-  try {
-    const response = await api.get("/hr/leave-requests/pending");
-    console.log("getHRPendingRequests response:", response.data); // Debug
-    return response.data;
-  } catch (error) {
-    console.error(
-      "getHRPendingRequests error:",
-      error.response?.data || error.message
-    );
-    throw error;
-  }
-};
-
 export const getAdminPendingRequests = async () => {
   try {
-    const response = await api.get("/admin/leave-requests/pending");
+    const response = await api.get("/admin/leave-requests/approvals-needed");
     console.log("getAdminPendingRequests response:", response.data);
     return response.data;
   } catch (error) {
     console.error(
       "getAdminPendingRequests error:",
-      error.response?.data || error.message
-    );
-    throw error;
-  }
-};
-
-export const getManagerPendingRequests = async () => {
-  try {
-    const response = await api.get("/manager/leave-requests/pending");
-    console.log("getManagerPendingRequests response:", response.data);
-    return response.data;
-  } catch (error) {
-    console.error(
-      "getManagerPendingRequests error:",
       error.response?.data || error.message
     );
     throw error;

@@ -98,7 +98,6 @@ export class LeaveController {
         const leaveApprovalRepository =
           AppDataSource.getRepository(LeaveApproval);
         if (userCredentials.role_id === 2 || userCredentials.role_id === 4) {
-          // Employee/Intern
           if (duration <= 2) {
             if (user.manager_id) {
               const manager = await userRepository.findOne({
@@ -138,7 +137,6 @@ export class LeaveController {
             }
           }
         } else if (userCredentials.role_id === 3) {
-          // Manager
           const hr = await userRepository.findOne({ where: { role_id: 5 } });
           if (hr) {
             const approval = new LeaveApproval();
@@ -162,7 +160,6 @@ export class LeaveController {
             }
           }
         } else if (userCredentials.role_id === 5) {
-          // HR
           const admin = await userRepository.findOne({ where: { role_id: 1 } });
           if (admin) {
             const approval = new LeaveApproval();
@@ -310,7 +307,7 @@ export class LeaveController {
     }
   }
 
-  async getCalendarData(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+  async getLeaveAvailability(request: Hapi.Request, h: Hapi.ResponseToolkit) {
     const userCredentials = request.auth.credentials as {
       user_id: number;
       role_id: number;
@@ -341,7 +338,6 @@ export class LeaveController {
       let leaves: Leave[] = [];
       let users: User[] = [];
       if (userCredentials.role_id === 1) {
-        // Admin: All users
         leaves = await leaveRepository.find({
           where: {
             status: LeaveStatus.Approved,
@@ -352,7 +348,6 @@ export class LeaveController {
         });
         users = await userRepository.find();
       } else if (userCredentials.role_id === 5) {
-        // HR: Managers, Employees, Interns
         leaves = await leaveRepository.find({
           where: {
             status: LeaveStatus.Approved,
@@ -366,7 +361,6 @@ export class LeaveController {
           where: { role_id: In([2, 3, 4]) },
         });
       } else if (userCredentials.role_id === 3) {
-        // Manager: Team + own leaves
         const team = await userRepository.find({
           where: { manager_id: userCredentials.user_id, role_id: In([2, 4]) },
         });
@@ -385,7 +379,6 @@ export class LeaveController {
           users = [...team, currentUser];
         }
       } else {
-        // Employee/Intern: Own leaves
         leaves = await leaveRepository.find({
           where: {
             user_id: userCredentials.user_id,
@@ -436,11 +429,12 @@ export class LeaveController {
           start_date: startDate.toISOString(),
           end_date: endDate.toISOString(),
           data: calendarData,
+          holidays: HOLIDAYS_2025,
         })
         .code(200);
     } catch (error) {
-      console.error("Error fetching calendar data:", error);
-      throw Boom.internal("Internal server error fetching calendar data");
+      console.error("Error fetching leave availability:", error);
+      throw Boom.internal("Internal server error fetching leave availability");
     }
   }
 
