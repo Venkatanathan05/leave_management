@@ -6,9 +6,10 @@ import { LeaveBalance } from "../entity/LeaveBalance";
 import { LeaveApproval, ApprovalAction } from "../entity/LeaveApproval";
 import { calculateWorkingDays, checkLeaveOverlap } from "../utils/dateUtils";
 import { getRequiredApprovals } from "../utils/approvalUtils";
-import { roleInitialBalances } from "../constants";
+import { HOLIDAYS_2025, roleInitialBalances } from "../constants";
 import { User } from "../entity/User";
 import { LeaveType } from "../entity/LeaveType";
+import { LessThanOrEqual, MoreThanOrEqual, In } from "typeorm";
 
 export class LeaveController {
   async applyLeave(request: Hapi.Request, h: Hapi.ResponseToolkit) {
@@ -31,6 +32,7 @@ export class LeaveController {
       const leaveRepository = AppDataSource.getRepository(Leave);
       const leaveTypeRepository = AppDataSource.getRepository(LeaveType);
       const leaveBalanceRepository = AppDataSource.getRepository(LeaveBalance);
+      const userRepository = AppDataSource.getRepository(User);
 
       const leaveType = await leaveTypeRepository.findOne({
         where: { type_id },
@@ -68,6 +70,14 @@ export class LeaveController {
         );
       }
 
+      const user = await userRepository.findOne({
+        where: { user_id: userCredentials.user_id },
+        relations: ["role"],
+      });
+      if (!user) {
+        throw Boom.notFound("User not found");
+      }
+
       const leave = new Leave();
       leave.user_id = userCredentials.user_id;
       leave.type_id = type_id;
@@ -78,9 +88,92 @@ export class LeaveController {
       leave.status = leaveType.requires_approval
         ? LeaveStatus.Pending
         : LeaveStatus.Approved;
+      leave.user = user;
       leave.required_approvals = getRequiredApprovals(leave);
 
+      const duration = calculateWorkingDays(parsedStartDate, parsedEndDate);
       const savedLeave = await leaveRepository.save(leave);
+
+      if (leaveType.requires_approval && userCredentials.role_id !== 1) {
+        const leaveApprovalRepository =
+          AppDataSource.getRepository(LeaveApproval);
+        if (userCredentials.role_id === 2 || userCredentials.role_id === 4) {
+          // Employee/Intern
+          if (duration <= 2) {
+            if (user.manager_id) {
+              const manager = await userRepository.findOne({
+                where: { user_id: user.manager_id, role_id: 3 },
+              });
+              if (manager) {
+                const approval = new LeaveApproval();
+                approval.leave_id = savedLeave.leave_id;
+                approval.approver_id = manager.user_id;
+                approval.approver_role_id = 3;
+                approval.action = ApprovalAction.Pending;
+                await leaveApprovalRepository.save(approval);
+              }
+            }
+          } else {
+            const hr = await userRepository.findOne({ where: { role_id: 5 } });
+            if (hr) {
+              const approval = new LeaveApproval();
+              approval.leave_id = savedLeave.leave_id;
+              approval.approver_id = hr.user_id;
+              approval.approver_role_id = 5;
+              approval.action = ApprovalAction.Pending;
+              await leaveApprovalRepository.save(approval);
+            }
+            if (duration > 5 && user.manager_id) {
+              const manager = await userRepository.findOne({
+                where: { user_id: user.manager_id, role_id: 3 },
+              });
+              if (manager) {
+                const approval = new LeaveApproval();
+                approval.leave_id = savedLeave.leave_id;
+                approval.approver_id = manager.user_id;
+                approval.approver_role_id = 3;
+                approval.action = ApprovalAction.Pending;
+                await leaveApprovalRepository.save(approval);
+              }
+            }
+          }
+        } else if (userCredentials.role_id === 3) {
+          // Manager
+          const hr = await userRepository.findOne({ where: { role_id: 5 } });
+          if (hr) {
+            const approval = new LeaveApproval();
+            approval.leave_id = savedLeave.leave_id;
+            approval.approver_id = hr.user_id;
+            approval.approver_role_id = 5;
+            approval.action = ApprovalAction.Pending;
+            await leaveApprovalRepository.save(approval);
+          }
+          if (duration > 5) {
+            const admin = await userRepository.findOne({
+              where: { role_id: 1 },
+            });
+            if (admin) {
+              const approval = new LeaveApproval();
+              approval.leave_id = savedLeave.leave_id;
+              approval.approver_id = admin.user_id;
+              approval.approver_role_id = 1;
+              approval.action = ApprovalAction.Pending;
+              await leaveApprovalRepository.save(approval);
+            }
+          }
+        } else if (userCredentials.role_id === 5) {
+          // HR
+          const admin = await userRepository.findOne({ where: { role_id: 1 } });
+          if (admin) {
+            const approval = new LeaveApproval();
+            approval.leave_id = savedLeave.leave_id;
+            approval.approver_id = admin.user_id;
+            approval.approver_role_id = 1;
+            approval.action = ApprovalAction.Pending;
+            await leaveApprovalRepository.save(approval);
+          }
+        }
+      }
 
       if (!leaveType.is_balance_based) {
         return h
@@ -112,7 +205,6 @@ export class LeaveController {
       }
 
       if (leave.status === LeaveStatus.Approved) {
-        const duration = calculateWorkingDays(parsedStartDate, parsedEndDate);
         if (balance.available_days < duration) {
           await leaveRepository.delete(savedLeave.leave_id);
           throw Boom.forbidden("Insufficient leave balance");
@@ -122,30 +214,11 @@ export class LeaveController {
         await leaveBalanceRepository.save(balance);
       }
 
-      if (
-        leave.required_approvals > 0 &&
-        userCredentials.role_id !== 1 &&
-        userCredentials.role_id !== 5
-      ) {
-        const leaveApprovalRepository =
-          AppDataSource.getRepository(LeaveApproval);
-        const manager = await AppDataSource.getRepository(User).findOne({
-          where: { user_id: userCredentials.user_id },
-          relations: ["manager"],
-        });
-        if (manager?.manager_id) {
-          const approval = new LeaveApproval();
-          approval.leave_id = savedLeave.leave_id;
-          approval.approver_id = manager.manager_id;
-          approval.approver_role_id = 3; // Manager role
-          approval.action = ApprovalAction.Pending;
-          approval.comments = "";
-          await leaveApprovalRepository.save(approval);
-        }
-      }
-
       return h
-        .response({ message: "Leave applied successfully", leave: savedLeave })
+        .response({
+          message: "Leave applied successfully",
+          leave: savedLeave,
+        })
         .code(201);
     } catch (error) {
       if (Boom.isBoom(error)) throw error;
@@ -214,6 +287,169 @@ export class LeaveController {
       if (Boom.isBoom(error)) throw error;
       console.error("Error cancelling leave:", error);
       throw Boom.internal("Internal server error cancelling leave");
+    }
+  }
+
+  async getLeaveHistory(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    const user = request.auth.credentials as { user_id: number };
+    if (!user.user_id) {
+      throw Boom.unauthorized("User not authenticated or user ID missing");
+    }
+
+    try {
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const leaves = await leaveRepository.find({
+        where: { user_id: user.user_id },
+        relations: ["leaveType", "approvals"],
+        order: { applied_at: "DESC" },
+      });
+      return h.response(leaves).code(200);
+    } catch (error) {
+      console.error("Error fetching leave history:", error);
+      throw Boom.internal("Internal server error fetching leave history");
+    }
+  }
+
+  async getCalendarData(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    const userCredentials = request.auth.credentials as {
+      user_id: number;
+      role_id: number;
+    };
+    const { period = "month", date = new Date().toISOString() } =
+      request.query as {
+        period?: "week" | "month";
+        date?: string;
+      };
+
+    try {
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const userRepository = AppDataSource.getRepository(User);
+      const startDate = new Date(date);
+      let endDate: Date;
+      if (period === "month") {
+        startDate.setDate(1);
+        endDate = new Date(
+          startDate.getFullYear(),
+          startDate.getMonth() + 1,
+          0
+        );
+      } else {
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6);
+      }
+
+      let leaves: Leave[] = [];
+      let users: User[] = [];
+      if (userCredentials.role_id === 1) {
+        // Admin: All users
+        leaves = await leaveRepository.find({
+          where: {
+            status: LeaveStatus.Approved,
+            start_date: LessThanOrEqual(endDate),
+            end_date: MoreThanOrEqual(startDate),
+          },
+          relations: ["user", "leaveType"],
+        });
+        users = await userRepository.find();
+      } else if (userCredentials.role_id === 5) {
+        // HR: Managers, Employees, Interns
+        leaves = await leaveRepository.find({
+          where: {
+            status: LeaveStatus.Approved,
+            start_date: LessThanOrEqual(endDate),
+            end_date: MoreThanOrEqual(startDate),
+            user: { role_id: In([2, 3, 4]) },
+          },
+          relations: ["user", "leaveType"],
+        });
+        users = await userRepository.find({
+          where: { role_id: In([2, 3, 4]) },
+        });
+      } else if (userCredentials.role_id === 3) {
+        // Manager: Team + own leaves
+        const team = await userRepository.find({
+          where: { manager_id: userCredentials.user_id, role_id: In([2, 4]) },
+        });
+        const teamIds = team.map((u) => u.user_id);
+        leaves = await leaveRepository.find({
+          where: [
+            { user_id: userCredentials.user_id, status: LeaveStatus.Approved },
+            { user_id: In(teamIds), status: LeaveStatus.Approved },
+          ],
+          relations: ["user", "leaveType"],
+        });
+        const currentUser = await userRepository.findOne({
+          where: { user_id: userCredentials.user_id },
+        });
+        if (currentUser) {
+          users = [...team, currentUser];
+        }
+      } else {
+        // Employee/Intern: Own leaves
+        leaves = await leaveRepository.find({
+          where: {
+            user_id: userCredentials.user_id,
+            status: LeaveStatus.Approved,
+            start_date: LessThanOrEqual(endDate),
+            end_date: MoreThanOrEqual(startDate),
+          },
+          relations: ["user", "leaveType"],
+        });
+        const currentUser = await userRepository.findOne({
+          where: { user_id: userCredentials.user_id },
+        });
+        if (currentUser) {
+          users = [currentUser];
+        }
+      }
+
+      const totalUsers = users.length;
+      const calendarData = [];
+      for (
+        let d = new Date(startDate);
+        d <= endDate;
+        d.setDate(d.getDate() + 1)
+      ) {
+        const date = new Date(d);
+        const onLeave = leaves.filter((l) => {
+          const start = new Date(l.start_date);
+          const end = new Date(l.end_date);
+          return date >= start && date <= end;
+        });
+        const leaveCount = onLeave.length;
+        const presentCount = totalUsers - leaveCount;
+        calendarData.push({
+          date: date.toISOString(),
+          leaves: onLeave.map((l) => ({
+            leave_id: l.leave_id,
+            user_id: l.user.user_id,
+            user_name: l.user.name,
+            leave_type: l.leaveType.name,
+          })),
+          counts: { leave: leaveCount, present: presentCount },
+        });
+      }
+
+      return h
+        .response({
+          period,
+          start_date: startDate.toISOString(),
+          end_date: endDate.toISOString(),
+          data: calendarData,
+        })
+        .code(200);
+    } catch (error) {
+      console.error("Error fetching calendar data:", error);
+      throw Boom.internal("Internal server error fetching calendar data");
+    }
+  }
+
+  async getHolidays(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    try {
+      return h.response(HOLIDAYS_2025).code(200);
+    } catch (error) {
+      console.error("Error fetching holidays:", error);
+      throw Boom.internal("Internal server error fetching holidays");
     }
   }
 }

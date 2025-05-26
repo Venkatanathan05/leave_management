@@ -122,10 +122,6 @@ export class HRController {
       throw Boom.forbidden("Only HR can approve leaves");
     }
 
-    if (isNaN(leaveId)) {
-      throw Boom.badRequest("Invalid leave ID");
-    }
-
     try {
       const leaveRepository = AppDataSource.getRepository(Leave);
       const leaveApprovalRepository =
@@ -139,22 +135,21 @@ export class HRController {
         throw Boom.notFound("Leave request not found");
       }
 
-      if (
-        leave.user.role_id !== 2 &&
-        leave.user.role_id !== 3 &&
-        leave.user.role_id !== 4
-      ) {
-        throw Boom.forbidden(
-          "HR can only approve Employee, Manager, or Intern leaves"
-        );
-      }
-
       const duration = calculateWorkingDays(
         new Date(leave.start_date),
         new Date(leave.end_date)
       );
-      if (duration <= LEAVE_THRESHOLD_HR && leave.required_approvals <= 1) {
-        throw Boom.forbidden("This leave does not require HR approval");
+      if (
+        (leave.user.role_id === 2 || leave.user.role_id === 4) &&
+        duration > 5
+      ) {
+        const managerApproved = leave.approvals.some(
+          (a) =>
+            a.approver_role_id === 3 && a.action === ApprovalAction.Approved
+        );
+        if (!managerApproved) {
+          throw Boom.badRequest("Manager approval required first");
+        }
       }
 
       const existingApproval = await leaveApprovalRepository.findOne({
@@ -208,7 +203,7 @@ export class HRController {
         .code(200);
     } catch (error) {
       if (Boom.isBoom(error)) throw error;
-      console.error("Error approving leave request:", error);
+      console.error("Error approving leave:", error);
       throw Boom.internal("Internal server error approving leave");
     }
   }
@@ -225,10 +220,6 @@ export class HRController {
       throw Boom.forbidden("Only HR can reject leaves");
     }
 
-    if (isNaN(leaveId)) {
-      throw Boom.badRequest("Invalid leave ID");
-    }
-
     try {
       const leaveRepository = AppDataSource.getRepository(Leave);
       const leaveApprovalRepository =
@@ -242,22 +233,21 @@ export class HRController {
         throw Boom.notFound("Leave request not found");
       }
 
-      if (
-        leave.user.role_id !== 2 &&
-        leave.user.role_id !== 3 &&
-        leave.user.role_id !== 4
-      ) {
-        throw Boom.forbidden(
-          "HR can only reject Employee, Manager, or Intern leaves"
-        );
-      }
-
       const duration = calculateWorkingDays(
         new Date(leave.start_date),
         new Date(leave.end_date)
       );
-      if (duration <= LEAVE_THRESHOLD_HR && leave.required_approvals <= 1) {
-        throw Boom.forbidden("This leave does not require HR approval");
+      if (
+        (leave.user.role_id === 2 || leave.user.role_id === 4) &&
+        duration > 5
+      ) {
+        const managerApproved = leave.approvals.some(
+          (a) =>
+            a.approver_role_id === 3 && a.action === ApprovalAction.Approved
+        );
+        if (!managerApproved) {
+          throw Boom.badRequest("Manager approval required first");
+        }
       }
 
       const existingApproval = await leaveApprovalRepository.findOne({
@@ -286,7 +276,7 @@ export class HRController {
       return h.response({ message: "Leave rejected successfully" }).code(200);
     } catch (error) {
       if (Boom.isBoom(error)) throw error;
-      console.error("Error rejecting leave request:", error);
+      console.error("Error rejecting leave:", error);
       throw Boom.internal("Internal server error rejecting leave");
     }
   }

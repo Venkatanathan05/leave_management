@@ -195,6 +195,36 @@ export class AdminController {
     }
   }
 
+  async getPendingLeaveRequests(
+    request: Hapi.Request,
+    h: Hapi.ResponseToolkit
+  ) {
+    const userCredentials = request.auth.credentials as {
+      user_id: number;
+      role_id: number;
+    };
+
+    if (userCredentials.role_id !== 1) {
+      throw Boom.forbidden("Only Admin can view pending leave requests");
+    }
+
+    try {
+      const leaveRepository = AppDataSource.getRepository(Leave);
+      const leaves = await leaveRepository.find({
+        where: { status: LeaveStatus.Awaiting_Admin_Approval },
+        relations: ["user", "leaveType", "approvals"],
+        order: { applied_at: "ASC" },
+      });
+
+      return h.response(leaves).code(200);
+    } catch (error) {
+      console.error("Error fetching admin pending leave requests:", error);
+      throw Boom.internal(
+        "Internal server error fetching pending leave requests"
+      );
+    }
+  }
+
   async approveLeaveRequest(request: Hapi.Request, h: Hapi.ResponseToolkit) {
     const leaveId = parseInt(request.params.leave_id, 10);
     const userCredentials = request.auth.credentials as {
@@ -203,8 +233,8 @@ export class AdminController {
     };
     const payload = request.payload as { comments?: string };
 
-    if (isNaN(leaveId)) {
-      throw Boom.badRequest("Invalid leave ID");
+    if (userCredentials.role_id !== 1) {
+      throw Boom.forbidden("Only Admin can approve leaves");
     }
 
     try {
@@ -220,14 +250,33 @@ export class AdminController {
         throw Boom.notFound("Leave request not found");
       }
 
+      const duration = calculateWorkingDays(
+        new Date(leave.start_date),
+        new Date(leave.end_date)
+      );
       if (
-        leave.status !== LeaveStatus.Awaiting_Admin_Approval &&
-        leave.user.role_id !== 3 &&
-        leave.user.role_id !== 5
+        (leave.user.role_id === 2 || leave.user.role_id === 4) &&
+        duration > 5
       ) {
-        throw Boom.forbidden(
-          "Not authorized to approve this leave or leave not awaiting Admin approval"
+        const managerApproved = leave.approvals.some(
+          (a) =>
+            a.approver_role_id === 3 && a.action === ApprovalAction.Approved
         );
+        const hrApproved = leave.approvals.some(
+          (a) =>
+            a.approver_role_id === 5 && a.action === ApprovalAction.Approved
+        );
+        if (!managerApproved || !hrApproved) {
+          throw Boom.badRequest("Manager and HR approval required first");
+        }
+      } else if (leave.user.role_id === 3 && duration > 5) {
+        const hrApproved = leave.approvals.some(
+          (a) =>
+            a.approver_role_id === 5 && a.action === ApprovalAction.Approved
+        );
+        if (!hrApproved) {
+          throw Boom.badRequest("HR approval required first");
+        }
       }
 
       const existingApproval = await leaveApprovalRepository.findOne({
@@ -262,10 +311,6 @@ export class AdminController {
       if (processed && status === LeaveStatus.Approved) {
         const leaveBalanceRepository =
           AppDataSource.getRepository(LeaveBalance);
-        const duration = calculateWorkingDays(
-          new Date(leave.start_date),
-          new Date(leave.end_date)
-        );
         const balance = await leaveBalanceRepository.findOne({
           where: {
             user_id: leave.user_id,
@@ -285,7 +330,7 @@ export class AdminController {
         .code(200);
     } catch (error) {
       if (Boom.isBoom(error)) throw error;
-      console.error("Error approving leave request:", error);
+      console.error("Error approving leave:", error);
       throw Boom.internal("Internal server error approving leave");
     }
   }
@@ -298,8 +343,8 @@ export class AdminController {
     };
     const payload = request.payload as { comments?: string };
 
-    if (isNaN(leaveId)) {
-      throw Boom.badRequest("Invalid leave ID");
+    if (userCredentials.role_id !== 1) {
+      throw Boom.forbidden("Only Admin can reject leaves");
     }
 
     try {
@@ -315,14 +360,33 @@ export class AdminController {
         throw Boom.notFound("Leave request not found");
       }
 
+      const duration = calculateWorkingDays(
+        new Date(leave.start_date),
+        new Date(leave.end_date)
+      );
       if (
-        leave.status !== LeaveStatus.Awaiting_Admin_Approval &&
-        leave.user.role_id !== 3 &&
-        leave.user.role_id !== 5
+        (leave.user.role_id === 2 || leave.user.role_id === 4) &&
+        duration > 5
       ) {
-        throw Boom.forbidden(
-          "Not authorized to reject this leave or leave not awaiting Admin approval"
+        const managerApproved = leave.approvals.some(
+          (a) =>
+            a.approver_role_id === 3 && a.action === ApprovalAction.Approved
         );
+        const hrApproved = leave.approvals.some(
+          (a) =>
+            a.approver_role_id === 5 && a.action === ApprovalAction.Approved
+        );
+        if (!managerApproved || !hrApproved) {
+          throw Boom.badRequest("Manager and HR approval required first");
+        }
+      } else if (leave.user.role_id === 3 && duration > 5) {
+        const hrApproved = leave.approvals.some(
+          (a) =>
+            a.approver_role_id === 5 && a.action === ApprovalAction.Approved
+        );
+        if (!hrApproved) {
+          throw Boom.badRequest("HR approval required first");
+        }
       }
 
       const existingApproval = await leaveApprovalRepository.findOne({
@@ -351,7 +415,7 @@ export class AdminController {
       return h.response({ message: "Leave rejected successfully" }).code(200);
     } catch (error) {
       if (Boom.isBoom(error)) throw error;
-      console.error("Error rejecting leave request:", error);
+      console.error("Error rejecting leave:", error);
       throw Boom.internal("Internal server error rejecting leave");
     }
   }

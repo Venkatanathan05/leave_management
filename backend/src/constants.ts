@@ -24,3 +24,13 @@ export const roleInitialBalances: {
     { leaveTypeName: "Sick Leave", initialDays: 15 },
   ],
 };
+
+export const HOLIDAYS_2025 = [
+  { name: "New Year's Day", date: "2025-01-01" },
+  { name: "Pongal", date: "2025-01-14" },
+  { name: "Republic Day", date: "2025-01-26" },
+  { name: "Independence Day", date: "2025-08-15" },
+  { name: "Gandhi Jayanti", date: "2025-10-02" },
+  { name: "Diwali", date: "2025-10-20" },
+  { name: "Christmas", date: "2025-12-25" },
+];

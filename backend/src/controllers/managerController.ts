@@ -45,6 +45,7 @@ export class ManagerController {
       throw Boom.internal("Internal server error fetching team users");
     }
   }
+
   async getPendingLeaveRequests(
     request: Hapi.Request,
     h: Hapi.ResponseToolkit

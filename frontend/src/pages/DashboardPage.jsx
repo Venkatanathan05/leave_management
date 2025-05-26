@@ -10,6 +10,7 @@ import Calendar from "../components/Calendar.jsx";
 import UserViewCard from "../components/UserViewCard.jsx";
 import LeaveRequests from "../components/LeaveRequests.jsx";
 import UserCreationForm from "../components/UserCreationForm.jsx";
+import ProfilePage from "../components/ProfilePage.jsx";
 import "../styles/DashboardPage.css";
 
 function DashboardPage() {
@@ -27,6 +28,7 @@ function DashboardPage() {
         <div className="dashboard-main">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="profile" element={<ProfilePage />} />
             <Route path="apply-leave" element={<LeaveForm />} />
             <Route path="balances" element={<Balances />} />
             <Route path="my-leaves" element={<MyLeaves />} />

@@ -17,12 +17,12 @@ export const comparePassword = async (
   return bcrypt.compare(password, hash);
 };
 
-export const generateToken = (user: User): string => {
-  return jwt.sign(
-    { user_id: user.user_id, role_id: user.role_id },
-    JWT_SECRET,
-    { expiresIn: "1h" }
-  );
+export const generateToken = (payload: {
+  user_id: number;
+  role_id: number;
+  scope?: string[];
+}): string => {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "1d" });
 };
 
 export const validateCredentials = async (

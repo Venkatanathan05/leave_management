@@ -1,14 +1,13 @@
 import * as Hapi from "@hapi/hapi";
 import * as Boom from "@hapi/boom";
-import * as jwt from "jsonwebtoken";
 import { AppDataSource } from "../data-source";
 import { User } from "../entity/User";
 import { Role } from "../entity/Role";
 import {
   hashPassword,
-  validateCredentials,
-  generateToken,
   comparePassword,
+  generateToken,
+  validateCredentials,
 } from "../utils/authUtils";
 
 export class AuthController {
@@ -22,23 +21,13 @@ export class AuthController {
     }
 
     try {
-      const userRepository = AppDataSource.getRepository(User);
-      const roleRepository = AppDataSource.getRepository(Role);
-      const user = await userRepository.findOne({ where: { email } });
-      console.log("Login attempt:", { email, userFound: !!user }); // Debug
+      const user = await validateCredentials(email, password);
+      console.log("Login attempt:", { email, userFound: !!user });
       if (!user) {
         throw Boom.unauthorized("Invalid email or password");
       }
 
-      const isPasswordValid = await comparePassword(
-        password,
-        user.password_hash
-      );
-      console.log("Password valid:", isPasswordValid); // Debug
-      if (!isPasswordValid) {
-        throw Boom.unauthorized("Invalid email or password");
-      }
-
+      const roleRepository = AppDataSource.getRepository(Role);
       const role = await roleRepository.findOne({
         where: { role_id: user.role_id },
       });
@@ -50,12 +39,12 @@ export class AuthController {
           : role?.name === "Admin"
           ? ["Admin"]
           : [];
-      console.log("JWT scope:", scope); // Debug
-      const token = jwt.sign(
-        { user_id: user.user_id, role_id: user.role_id, scope },
-        process.env.JWT_SECRET || "your_super_secret_jwt_key",
-        { expiresIn: "1d" }
-      );
+      console.log("JWT scope:", scope);
+      const token = generateToken({
+        user_id: user.user_id,
+        role_id: user.role_id,
+        scope,
+      });
 
       return h
         .response({
@@ -81,15 +70,14 @@ export class AuthController {
       user_id: number;
       role_id: number;
     };
-    const { email, password } = request.payload as {
+    const { email, oldPassword, newPassword } = request.payload as {
       email?: string;
-      password?: string;
+      oldPassword?: string;
+      newPassword?: string;
     };
 
-    if (!email && !password) {
-      throw Boom.badRequest(
-        "At least one field (email or password) must be provided"
-      );
+    if (!email && (!oldPassword || !newPassword)) {
+      throw Boom.badRequest("Provide email or both old and new passwords");
     }
 
     try {
@@ -109,8 +97,12 @@ export class AuthController {
         user.email = email;
       }
 
-      if (password) {
-        user.password_hash = await hashPassword(password);
+      if (oldPassword && newPassword) {
+        const isValid = await comparePassword(oldPassword, user.password_hash);
+        if (!isValid) {
+          throw Boom.unauthorized("Incorrect old password");
+        }
+        user.password_hash = await hashPassword(newPassword);
       }
 
       await userRepository.save(user);

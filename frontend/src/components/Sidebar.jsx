@@ -31,6 +31,9 @@ function Sidebar() {
           <li>
             <Link to="/dashboard/calendar">Calendar</Link>
           </li>
+          <li>
+            <Link to="/dashboard/profile">Profile</Link>
+          </li>
           {user.role_id === 1 && (
             <>
               <li>

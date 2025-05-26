@@ -30,7 +30,19 @@ function UserCreationForm() {
   }, [user]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    setFormData((prev) => {
+      const updated = { ...prev, [name]: value };
+      if (
+        name === "role_id" &&
+        value === "2" &&
+        managers.length > 0 &&
+        !prev.manager_id
+      ) {
+        updated.manager_id = managers[0].user_id;
+      }
+      return updated;
+    });
   };
 
   const handleSubmit = async (e) => {

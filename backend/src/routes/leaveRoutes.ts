@@ -12,6 +12,7 @@ import {
   EMPLOYEE_ROLE_ID,
   MANAGER_ROLE_ID,
   INTERN_ROLE_ID,
+  HOLIDAYS_2025,
 } from "../constants";
 import moment from "moment";
 import { LeaveController } from "../controllers/leaveController";
@@ -54,7 +55,6 @@ const leaveRoutes: Hapi.ServerRoute[] = [
         let applyableLeaveTypes: LeaveType[] = [];
 
         if (user.role_id === INTERN_ROLE_ID) {
-          // Interns only get "Loss of Pay"
           applyableLeaveTypes = allLeaveTypes.filter(
             (type) => type.name === "Loss of Pay"
           );
@@ -84,6 +84,7 @@ const leaveRoutes: Hapi.ServerRoute[] = [
     method: "POST",
     path: "/api/leaves",
     handler: (request, h) => leaveController.applyLeave(request, h),
+    options: { auth: "jwt" },
   },
   {
     method: "GET",
@@ -106,6 +107,7 @@ const leaveRoutes: Hapi.ServerRoute[] = [
         throw Boom.internal("Internal server error fetching leave balances");
       }
     },
+    options: { auth: "jwt" },
   },
   {
     method: "GET",
@@ -128,11 +130,13 @@ const leaveRoutes: Hapi.ServerRoute[] = [
         throw Boom.internal("Internal server error fetching leave history");
       }
     },
+    options: { auth: "jwt" },
   },
   {
     method: "PUT",
     path: "/api/leaves/my/{id}/cancel",
     handler: (request, h) => leaveController.cancelLeave(request, h),
+    options: { auth: "jwt" },
   },
   {
     method: "GET",
@@ -242,6 +246,19 @@ const leaveRoutes: Hapi.ServerRoute[] = [
         throw Boom.internal("Internal server error");
       }
     },
+    options: { auth: "jwt" },
+  },
+  {
+    method: "GET",
+    path: "/api/leaves/calendar",
+    handler: (request, h) => leaveController.getCalendarData(request, h),
+    options: { auth: "jwt" },
+  },
+  {
+    method: "GET",
+    path: "/api/holidays",
+    handler: (request, h) => leaveController.getHolidays(request, h),
+    options: { auth: "jwt" },
   },
 ];
 

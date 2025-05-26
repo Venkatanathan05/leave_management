@@ -4,8 +4,12 @@ import {
   getHRPendingRequests,
   approveHRLeave,
   rejectHRLeave,
+  getManagerPendingRequests,
   approveManagerLeave,
   rejectManagerLeave,
+  getAdminPendingRequests,
+  approveAdminLeave,
+  rejectAdminLeave,
 } from "../api.js";
 import "../styles/LeaveRequests.css";
 
@@ -23,11 +27,9 @@ function LeaveRequests() {
         if (user.role_id === 5) {
           data = await getHRPendingRequests();
         } else if (user.role_id === 3) {
-          // Manager endpoint (to be implemented)
-          data = [];
+          data = await getManagerPendingRequests();
         } else if (user.role_id === 1) {
-          // Admin endpoint (to be implemented)
-          data = [];
+          data = await getAdminPendingRequests();
         }
         setRequests(data);
         setError(data.length === 0 ? "No pending requests" : "");
@@ -46,6 +48,8 @@ function LeaveRequests() {
         await approveHRLeave(leaveId, "");
       } else if (user.role_id === 3) {
         await approveManagerLeave(leaveId, "");
+      } else if (user.role_id === 1) {
+        await approveAdminLeave(leaveId, "");
       }
       setRequests(requests.filter((req) => req.leave_id !== leaveId));
     } catch {
@@ -59,6 +63,8 @@ function LeaveRequests() {
         await rejectHRLeave(leaveId, "");
       } else if (user.role_id === 3) {
         await rejectManagerLeave(leaveId, "");
+      } else if (user.role_id === 1) {
+        await rejectAdminLeave(leaveId, "");
       }
       setRequests(requests.filter((req) => req.leave_id !== leaveId));
     } catch {
@@ -66,7 +72,7 @@ function LeaveRequests() {
     }
   };
 
-  if (!user || ![1, 3, 5].includes(user.role_id)) return null;
+  if (!user || ![1, 5, 3].includes(user.role_id)) return null;
 
   return (
     <div className="leave-requests">
@@ -110,7 +116,7 @@ function LeaveRequests() {
           </tbody>
         </table>
       ) : (
-        !loading && !error && <p>No pending requests</p>
+        !loading && <p className="info">No pending requests</p>
       )}
     </div>
   );

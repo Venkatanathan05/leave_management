@@ -23,6 +23,13 @@ const adminRoutes: Hapi.ServerRoute[] = [
     options: { auth: "jwt" },
   },
   {
+    method: "GET",
+    path: "/api/admin/leave-requests/approvals-needed",
+    handler: (request, h) =>
+      adminController.getPendingLeaveRequests(request, h),
+    options: { auth: "jwt" },
+  },
+  {
     method: "POST",
     path: "/api/admin/leave-requests/{leave_id}/approve",
     handler: (request, h) => adminController.approveLeaveRequest(request, h),

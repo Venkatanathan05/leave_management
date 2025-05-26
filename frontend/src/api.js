@@ -136,6 +136,34 @@ export const getHRPendingRequests = async () => {
   }
 };
 
+export const getAdminPendingRequests = async () => {
+  try {
+    const response = await api.get("/admin/leave-requests/pending");
+    console.log("getAdminPendingRequests response:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error(
+      "getAdminPendingRequests error:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
+export const getManagerPendingRequests = async () => {
+  try {
+    const response = await api.get("/manager/leave-requests/pending");
+    console.log("getManagerPendingRequests response:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error(
+      "getManagerPendingRequests error:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
 export const createUser = async (userData) => {
   const response = await api.post("/admin/users", userData);
   return response.data;
@@ -151,6 +179,104 @@ export const assignEmployeeToManager = async (employeeId, managerId) => {
     manager_id: managerId,
   });
   return response.data;
+};
+
+export const updateProfile = async (profileData) => {
+  try {
+    const response = await api.put("/auth/profile", profileData);
+    return response.data;
+  } catch (error) {
+    console.error(
+      "updateProfile error:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
+export const approveAdminLeave = async (leaveId, comments) => {
+  const response = await api.post(`/admin/leave-requests/${leaveId}/approve`, {
+    comments,
+  });
+  return response.data;
+};
+
+export const rejectAdminLeave = async (leaveId, comments) => {
+  const response = await api.post(`/admin/leave-requests/${leaveId}/reject`, {
+    comments,
+  });
+  return response.data;
+};
+
+export const getTeamAvailability = async ({ period, date }) => {
+  try {
+    const response = await api.get("/manager/team-availability", {
+      params: { period, date },
+    });
+    console.log("getTeamAvailability response:", response.data);
+    return response.data;
+  } catch (error) {
+    console.error(
+      "getTeamAvailability error:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
+export const getHolidays = async () => {
+  try {
+    const response = await api.get("/holidays");
+    return response.data;
+  } catch (error) {
+    console.error("getHolidays error:", error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// Existing getCalendarData
+export const getCalendarData = async ({ period, date }) => {
+  try {
+    const response = await api.get("/leaves/calendar", {
+      params: { period, date },
+    });
+    return response.data;
+  } catch (error) {
+    console.error(
+      "getCalendarData error:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
+export const checkLeaveOverlap = (startDate, endDate, existingLeaves) => {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  let overlaps = false;
+  let isSubset = false;
+  let canMerge = false;
+
+  for (const leave of existingLeaves) {
+    const leaveStart = new Date(leave.start_date);
+    const leaveEnd = new Date(leave.end_date);
+
+    if (
+      (start >= leaveStart && start <= leaveEnd) ||
+      (end >= leaveStart && end <= leaveEnd) ||
+      (start <= leaveStart && end >= leaveEnd)
+    ) {
+      overlaps = true;
+      if (start >= leaveStart && end <= leaveEnd) {
+        isSubset = true;
+      }
+      if (leave.status === "approved") {
+        canMerge = true;
+      }
+    }
+  }
+
+  return { overlaps, isSubset, canMerge };
 };
 
 export default api;
