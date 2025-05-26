@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "../authContext.jsx";
+import { useAuth } from "../auth/authContext.jsx";
 import { getCalendarData, getHolidays } from "../api.js";
 import "../styles/Calendar.css";
 

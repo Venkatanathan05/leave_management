@@ -1,4 +1,4 @@
-import { useAuth } from "../authContext.jsx";
+import { useAuth } from "../auth/authContext.jsx";
 import WelcomeCard from "./WelcomeCard.jsx";
 import "../styles/Dashboard.css";
 

@@ -1,4 +1,4 @@
-import { useAuth } from "../authContext.jsx";
+import { useAuth } from "../auth/authContext.jsx";
 import { Link } from "react-router-dom";
 import "../styles/Sidebar.css";
 

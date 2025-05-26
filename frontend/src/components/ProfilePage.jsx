@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useAuth } from "../authContext.jsx";
+import { useAuth } from "../auth/authContext.jsx";
 import api from "../api.js";
 import "../styles/ProfilePage.css";
 

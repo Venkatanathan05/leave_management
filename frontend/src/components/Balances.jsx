@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "../authContext.jsx";
+import { useAuth } from "../auth/authContext.jsx";
 import { getLeaveBalances } from "../api.js";
 import "../styles/Balances.css";
 
