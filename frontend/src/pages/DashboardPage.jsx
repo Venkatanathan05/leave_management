@@ -52,7 +52,6 @@ function DashboardPage() {
                 <Route path="users" element={<UserViewCard />} />
               </>
             )}
-            {/* Remove placeholder routes */}
           </Routes>
         </div>
       </div>
