@@ -1,6 +1,5 @@
 .dashboard-content {
   padding: 24px;
-  margin-left: 250px; /* Space for sidebar */
   background-color: #111827;
   min-height: 100vh;
   color: #e5e7eb;
@@ -22,7 +21,6 @@
 
 @media (max-width: 768px) {
   .dashboard-content {
-    margin-left: 200px;
     padding: 16px;
   }
   .dashboard-content h1 {

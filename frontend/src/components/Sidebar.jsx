@@ -12,6 +12,9 @@ function Sidebar() {
       <h3>Welcome, {user.name}</h3>
       <nav>
         <ul>
+          <li>
+            <Link to="/dashboard/profile">Profile</Link>
+          </li>
           {(user.role_id === 2 ||
             user.role_id === 4 ||
             user.role_id === 3 ||
@@ -31,9 +34,7 @@ function Sidebar() {
           <li>
             <Link to="/dashboard/calendar">Calendar</Link>
           </li>
-          <li>
-            <Link to="/dashboard/profile">Profile</Link>
-          </li>
+
           {user.role_id === 1 && (
             <>
               <li>
@@ -60,10 +61,10 @@ function Sidebar() {
           {user.role_id === 3 && (
             <>
               <li>
-                <Link to="/dashboard/team-requests">Team Requests</Link>
+                <Link to="/dashboard/users">Users</Link>
               </li>
               <li>
-                <Link to="/dashboard/users">Users</Link>
+                <Link to="/dashboard/team-requests">Team Requests</Link>
               </li>
             </>
           )}

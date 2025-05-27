@@ -9,11 +9,14 @@
 
 .dashboard-main {
   flex: 1;
-  padding-top: 80px; /* Space for navbar */
+  padding-top: 50px; /* Space for navbar */
+  margin-left: 250px; /* Space for fixed sidebar */
+  margin-bottom: 50px;
 }
 
 @media (max-width: 768px) {
   .dashboard-main {
     padding-top: 64px;
+    margin-left: 200px; /* Match sidebar width */
   }
 }
