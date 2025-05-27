@@ -4,6 +4,9 @@ const api = axios.create({
   baseURL: "http://localhost:5000/api",
 });
 
+// In-memory cache
+const cache = new Map();
+
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -48,11 +51,6 @@ export const getLeaveBalances = async (userId) => {
 export const getMyLeaves = async (userId) => {
   const endpoint = userId ? `/leaves/my/${userId}` : "/leaves/my";
   const response = await api.get(endpoint);
-  return response.data;
-};
-
-export const getLeaveAvailability = async () => {
-  const response = await api.get("/leaves/calendar/leave-availability");
   return response.data;
 };
 
@@ -174,7 +172,7 @@ export const deleteUser = async (userId) => {
 };
 
 export const assignEmployeeToManager = async (employeeId, managerId) => {
-  const response = await api.put(`/admin/users/${employeeId}/assign-manager`, {
+  const response = await api.put(`/admin/users/${employeeId}/assign`, {
     manager_id: managerId,
   });
   return response.data;
@@ -233,12 +231,18 @@ export const getHolidays = async () => {
   }
 };
 
-// Existing getCalendarData
 export const getCalendarData = async ({ period, date }) => {
   try {
-    const response = await api.get("/leaves/calendar", {
+    const cacheKey = `calendar_${period}_${date}`;
+    const cached = cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
+      console.log("Returning cached calendar data:", cacheKey);
+      return cached.data;
+    }
+    const response = await api.get("/leaves/calendar/leave-availability", {
       params: { period, date },
     });
+    cache.set(cacheKey, { data: response.data, timestamp: Date.now() });
     return response.data;
   } catch (error) {
     console.error(

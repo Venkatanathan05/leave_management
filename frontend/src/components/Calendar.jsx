@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAuth } from "../auth/authContext.jsx";
-import { getCalendarData, getHolidays } from "../api.js";
+import { getCalendarData } from "../api.js";
 import "../styles/Calendar.css";
 
 function Calendar() {
@@ -10,33 +10,37 @@ function Calendar() {
   const [error, setError] = useState("");
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState("month");
-  const [roleFilter, setRoleFilter] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const roles = ["Employee", "Intern", "Manager", "HR"];
+  const today = useMemo(() => new Date(), []); // Stabilize today
 
-  useEffect(() => {
+  const fetchData = useCallback(async () => {
     if (!user) return;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [calendarResponse, holidaysResponse] = await Promise.all([
-          getCalendarData({ period: view, date: currentDate.toISOString() }),
-          getHolidays(),
-        ]);
-        setCalendarData(calendarResponse.data);
-        setHolidays(holidaysResponse);
-      } catch {
-        setError("Failed to load calendar data");
-      } finally {
-        setLoading(false);
+    setLoading(true);
+    try {
+      const response = await getCalendarData({
+        period: view,
+        date: currentDate.toISOString(),
+      });
+      if (user.role_id === 3) {
+        console.log("Calendar Data for Manager (role_id: 3):", response.data);
       }
-    };
-    fetchData();
+      setCalendarData(response.data || []);
+      setHolidays(response.holidays || []);
+    } catch (err) {
+      setError("Failed to load calendar data");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }, [user, view, currentDate]);
 
-  const getDates = () => {
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const getDates = useMemo(() => {
     const dates = [];
     const start = new Date(currentDate);
     if (view === "month") {
@@ -53,23 +57,29 @@ function Calendar() {
       }
     }
     return dates;
-  };
+  }, [view, currentDate]);
 
-  const prevPeriod = () => {
+  const prevPeriod = useCallback(() => {
     const newDate = new Date(currentDate);
-    if (view === "month") newDate.setMonth(newDate.getMonth() - 1);
-    else newDate.setDate(newDate.getDate() - 7);
+    if (view === "month") {
+      newDate.setMonth(newDate.getMonth() - 1);
+    } else {
+      newDate.setDate(newDate.getDate() - 7);
+    }
     setCurrentDate(newDate);
-  };
+  }, [currentDate, view]);
 
-  const nextPeriod = () => {
+  const nextPeriod = useCallback(() => {
     const newDate = new Date(currentDate);
-    if (view === "month") newDate.setMonth(newDate.getMonth() + 1);
-    else newDate.setDate(newDate.getDate() + 7);
+    if (view === "month") {
+      newDate.setMonth(newDate.getMonth() + 1);
+    } else {
+      newDate.setDate(newDate.getDate() + 7);
+    }
     setCurrentDate(newDate);
-  };
+  }, [currentDate, view]);
 
-  const getLeaveTypeClass = (leaveType) => {
+  const getLeaveTypeClass = useCallback((leaveType) => {
     switch (leaveType?.toLowerCase()) {
       case "casual leave":
         return "leave-annual";
@@ -84,30 +94,49 @@ function Calendar() {
       default:
         return "";
     }
-  };
+  }, []);
 
   const isWeekend = (date) => date.getDay() === 0 || date.getDay() === 6;
   const isHoliday = (date) =>
     holidays.some((h) => h.date === date.toISOString().split("T")[0]);
 
-  const filteredData = calendarData.filter((day) => {
-    if (!day.leaves) return false;
-    const matchesRole = roleFilter
-      ? day.leaves.some((l) => l.role_name === roleFilter)
-      : true;
-    const matchesSearch = searchQuery
-      ? day.leaves.some((l) =>
-          l.user_name.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-      : true;
-    return matchesRole && matchesSearch;
-  });
+  const canSearch = () =>
+    user?.role_id === 1 || user?.role_id === 5 || user?.role_id === 3;
 
-  const dates = getDates();
+  const filteredData = useMemo(() => {
+    if (!calendarData) return [];
+    return calendarData.filter((day) => {
+      if (!day.leaves) return false;
+      const date = new Date(day.date);
+      if (date > today) return false; // No availability data after today
+      const matchesSearch = searchQuery
+        ? day.leaves.some((l) => {
+            const lowerSearch = searchQuery.toLowerCase();
+            if (user.role_id === 1) {
+              return l.user_name.toLowerCase().includes(lowerSearch);
+            }
+            if (user.role_id === 5) {
+              return (
+                [2, 3, 4].includes(l.user_role_id) &&
+                l.user_name.toLowerCase().includes(lowerSearch)
+              );
+            }
+            if (user.role_id === 3) {
+              return (
+                [2, 4].includes(l.user_role_id) &&
+                l.user_name.toLowerCase().includes(lowerSearch)
+              );
+            }
+            return false;
+          })
+        : true;
+      return matchesSearch;
+    });
+  }, [calendarData, searchQuery, user?.role_id, today]);
 
   return (
     <div className="calendar-container">
-      <h2>{user.role_id === 3 ? "Team Availability" : "Leave Calendar"}</h2>
+      <h2>{user?.role_id === 3 ? "Team Availability" : "Leave Calendar"}</h2>
       {error && <p className="error">{error}</p>}
       {loading && <p>Loading...</p>}
       <div className="calendar-controls">
@@ -125,19 +154,8 @@ function Calendar() {
             Week
           </button>
         </div>
-        {(user.role_id === 3 || user.role_id === 5 || user.role_id === 1) && (
+        {canSearch() && (
           <div className="filters">
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-            >
-              <option value="">All Roles</option>
-              {roles.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
             <input
               type="text"
               placeholder="Search employees..."
@@ -165,7 +183,7 @@ function Calendar() {
             </div>
           ))}
         {view === "week" &&
-          dates.map((date) => (
+          getDates.map((date) => (
             <div key={date.toISOString()} className="calendar-day-header">
               {date.toLocaleDateString("default", {
                 weekday: "short",
@@ -174,16 +192,20 @@ function Calendar() {
             </div>
           ))}
         {view === "month" &&
-          dates[0].getDay() > 0 &&
-          Array.from({ length: dates[0].getDay() }).map((_, i) => (
+          getDates[0]?.getDay() > 0 &&
+          Array.from({ length: getDates[0].getDay() }).map((_, i) => (
             <div key={`blank-${i}`} className="calendar-day blank"></div>
           ))}
-        {dates.map((date) => {
+        {getDates.map((date) => {
           const dayData = filteredData.find(
             (d) => new Date(d.date).toDateString() === date.toDateString()
           );
           const isWeekOff = isWeekend(date);
           const isHolidayDay = isHoliday(date);
+          const showCounts =
+            !isWeekOff &&
+            !isHolidayDay &&
+            (user?.role_id === 1 || user?.role_id === 5);
           return (
             <div
               key={date.toISOString()}
@@ -192,7 +214,7 @@ function Calendar() {
               }`}
             >
               {view === "month" && date.getDate()}
-              {dayData?.leaves.map((leave) => (
+              {dayData?.leaves?.map((leave) => (
                 <div
                   key={`${leave.user_id}-${date.toISOString()}`}
                   className={`leave-indicator ${getLeaveTypeClass(
@@ -204,7 +226,7 @@ function Calendar() {
                     `${leave.user_name} (${leave.leave_type})`}
                 </div>
               ))}
-              {(user.role_id === 1 || user.role_id === 5) && dayData && (
+              {showCounts && dayData && (
                 <div className="count-indicators">
                   <span className="leave-count">
                     <span className="dot leave-dot"></span>

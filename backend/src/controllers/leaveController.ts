@@ -335,6 +335,17 @@ export class LeaveController {
         endDate.setDate(startDate.getDate() + 6);
       }
 
+      // Restrict to current date
+      const today = new Date();
+      if (endDate > today) {
+        endDate = today;
+      }
+
+      // Debug for Manager
+      if (userCredentials.role_id === 3) {
+        console.log(`Fetching team for manager_id: ${userCredentials.user_id}`);
+      }
+
       let leaves: Leave[] = [];
       let users: User[] = [];
       if (userCredentials.role_id === 1) {
@@ -344,7 +355,7 @@ export class LeaveController {
             start_date: LessThanOrEqual(endDate),
             end_date: MoreThanOrEqual(startDate),
           },
-          relations: ["user", "leaveType"],
+          relations: ["user", "leaveType", "user.role"],
         });
         users = await userRepository.find();
       } else if (userCredentials.role_id === 5) {
@@ -355,7 +366,7 @@ export class LeaveController {
             end_date: MoreThanOrEqual(startDate),
             user: { role_id: In([2, 3, 4]) },
           },
-          relations: ["user", "leaveType"],
+          relations: ["user", "leaveType", "user.role"],
         });
         users = await userRepository.find({
           where: { role_id: In([2, 3, 4]) },
@@ -364,14 +375,29 @@ export class LeaveController {
         const team = await userRepository.find({
           where: { manager_id: userCredentials.user_id, role_id: In([2, 4]) },
         });
+        console.log(`Team for manager_id ${userCredentials.user_id}:`, team);
         const teamIds = team.map((u) => u.user_id);
         leaves = await leaveRepository.find({
           where: [
-            { user_id: userCredentials.user_id, status: LeaveStatus.Approved },
-            { user_id: In(teamIds), status: LeaveStatus.Approved },
+            {
+              user_id: userCredentials.user_id,
+              status: LeaveStatus.Approved,
+              start_date: LessThanOrEqual(endDate),
+              end_date: MoreThanOrEqual(startDate),
+            },
+            {
+              user_id: In(teamIds),
+              status: LeaveStatus.Approved,
+              start_date: LessThanOrEqual(endDate),
+              end_date: MoreThanOrEqual(startDate),
+            },
           ],
-          relations: ["user", "leaveType"],
+          relations: ["user", "leaveType", "user.role"],
         });
+        console.log(
+          `Leaves for manager_id ${userCredentials.user_id}:`,
+          leaves
+        );
         const currentUser = await userRepository.findOne({
           where: { user_id: userCredentials.user_id },
         });
@@ -386,14 +412,11 @@ export class LeaveController {
             start_date: LessThanOrEqual(endDate),
             end_date: MoreThanOrEqual(startDate),
           },
-          relations: ["user", "leaveType"],
+          relations: ["user", "leaveType", "user.role"],
         });
-        const currentUser = await userRepository.findOne({
+        users = await userRepository.find({
           where: { user_id: userCredentials.user_id },
         });
-        if (currentUser) {
-          users = [currentUser];
-        }
       }
 
       const totalUsers = users.length;
@@ -417,6 +440,8 @@ export class LeaveController {
             leave_id: l.leave_id,
             user_id: l.user.user_id,
             user_name: l.user.name,
+            user_role_id: l.user.role_id,
+            user_role_name: l.user.role.name,
             leave_type: l.leaveType.name,
           })),
           counts: { leave: leaveCount, present: presentCount },
