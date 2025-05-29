@@ -146,6 +146,9 @@
 .leave-lop {
   background-color: #d1d5db;
 }
+.leave-present {
+  background-color: #10b981; /* Green for present */
+}
 
 .count-indicators {
   display: flex;

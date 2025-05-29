@@ -4,12 +4,28 @@ import { AppDataSource } from "../data-source";
 import { Leave, LeaveStatus } from "../entity/Leave";
 import { LeaveBalance } from "../entity/LeaveBalance";
 import { LeaveApproval, ApprovalAction } from "../entity/LeaveApproval";
-import { calculateWorkingDays, checkLeaveOverlap } from "../utils/dateUtils";
+import {
+  calculateWorkingDays,
+  checkLeaveOverlap,
+  isWeekend,
+  isHoliday,
+} from "../utils/dateUtils";
 import { getRequiredApprovals } from "../utils/approvalUtils";
 import { HOLIDAYS_2025, roleInitialBalances } from "../constants";
 import { User } from "../entity/User";
 import { LeaveType } from "../entity/LeaveType";
 import { LessThanOrEqual, MoreThanOrEqual, In } from "typeorm";
+
+import { bulkLeaveQueue } from "../jobs/bulkLeaveQueue";
+import { parse } from "csv-parse";
+import { Readable } from "stream";
+
+interface RawLeave {
+  leave_id: number;
+  start_date: string;
+  end_date: string;
+  status: string;
+}
 
 export class LeaveController {
   async applyLeave(request: Hapi.Request, h: Hapi.ResponseToolkit) {
@@ -50,10 +66,51 @@ export class LeaveController {
         throw Boom.badRequest("Start date must be before end date");
       }
 
-      const existingLeaves = await leaveRepository.find({
-        where: { user_id: userCredentials.user_id },
-        select: ["start_date", "end_date", "status"],
-      });
+      // Normalize dates to midnight UTC
+      parsedStartDate.setUTCHours(0, 0, 0, 0);
+      parsedEndDate.setUTCHours(0, 0, 0, 0);
+      console.log(
+        `applyLeave - Normalized input: start=${parsedStartDate.toISOString()}, end=${parsedEndDate.toISOString()}`
+      );
+
+      // Check for weekends and holidays
+      const currentDate = new Date(parsedStartDate);
+      while (currentDate <= parsedEndDate) {
+        console.log(`applyLeave - Checking date: ${currentDate.toISOString()}`);
+        if (isWeekend(currentDate)) {
+          throw Boom.badRequest(
+            `Cannot apply leave on weekend: ${currentDate.toLocaleDateString()}`
+          );
+        }
+        if (isHoliday(currentDate)) {
+          throw Boom.badRequest(
+            `Cannot apply leave on holiday: ${currentDate.toLocaleDateString()}`
+          );
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Use raw query to fetch exact database dates
+      const startDateStr = parsedStartDate.toISOString().split("T")[0];
+      const endDateStr = parsedEndDate.toISOString().split("T")[0];
+      const rawLeaves: RawLeave[] = await AppDataSource.query(
+        `SELECT leave_id, start_date, end_date, status
+         FROM leaves
+         WHERE user_id = $1
+         AND DATE(start_date) <= $2
+         AND DATE(end_date) >= $3`,
+        [userCredentials.user_id, endDateStr, startDateStr]
+      );
+      console.log(
+        `applyLeave - Raw database leaves: ${JSON.stringify(rawLeaves)}`
+      );
+
+      const existingLeaves = rawLeaves.map((leave: RawLeave) => ({
+        start_date: new Date(leave.start_date),
+        end_date: new Date(leave.end_date),
+        status: leave.status,
+      }));
+
       const overlapResult = checkLeaveOverlap(
         parsedStartDate,
         parsedEndDate,
@@ -64,9 +121,9 @@ export class LeaveController {
         throw Boom.conflict(
           `Leave overlaps with existing leave from ${new Date(
             conflictingLeave.start_date
-          ).toISOString()} to ${new Date(
+          ).toLocaleDateString()} to ${new Date(
             conflictingLeave.end_date
-          ).toISOString()}`
+          ).toLocaleDateString()}`
         );
       }
 
@@ -89,77 +146,52 @@ export class LeaveController {
         ? LeaveStatus.Pending
         : LeaveStatus.Approved;
       leave.user = user;
+      leave.leaveType = leaveType;
       leave.required_approvals = getRequiredApprovals(leave);
 
       const duration = calculateWorkingDays(parsedStartDate, parsedEndDate);
+      console.log(
+        `applyLeave - Setting required_approvals: ${leave.required_approvals}`
+      );
       const savedLeave = await leaveRepository.save(leave);
+      console.log(`applyLeave - Saved leave: ${JSON.stringify(savedLeave)}`);
 
       if (leaveType.requires_approval && userCredentials.role_id !== 1) {
         const leaveApprovalRepository =
           AppDataSource.getRepository(LeaveApproval);
-        if (userCredentials.role_id === 2 || userCredentials.role_id === 4) {
-          if (duration <= 2) {
-            if (user.manager_id) {
-              const manager = await userRepository.findOne({
-                where: { user_id: user.manager_id, role_id: 3 },
-              });
-              if (manager) {
-                const approval = new LeaveApproval();
-                approval.leave_id = savedLeave.leave_id;
-                approval.approver_id = manager.user_id;
-                approval.approver_role_id = 3;
-                approval.action = ApprovalAction.Pending;
-                await leaveApprovalRepository.save(approval);
-              }
-            }
-          } else {
-            const hr = await userRepository.findOne({ where: { role_id: 5 } });
-            if (hr) {
-              const approval = new LeaveApproval();
-              approval.leave_id = savedLeave.leave_id;
-              approval.approver_id = hr.user_id;
-              approval.approver_role_id = 5;
-              approval.action = ApprovalAction.Pending;
-              await leaveApprovalRepository.save(approval);
-            }
-            if (duration > 5 && user.manager_id) {
-              const manager = await userRepository.findOne({
-                where: { user_id: user.manager_id, role_id: 3 },
-              });
-              if (manager) {
-                const approval = new LeaveApproval();
-                approval.leave_id = savedLeave.leave_id;
-                approval.approver_id = manager.user_id;
-                approval.approver_role_id = 3;
-                approval.action = ApprovalAction.Pending;
-                await leaveApprovalRepository.save(approval);
-              }
-            }
-          }
-        } else if (userCredentials.role_id === 3) {
-          const hr = await userRepository.findOne({ where: { role_id: 5 } });
-          if (hr) {
-            const approval = new LeaveApproval();
-            approval.leave_id = savedLeave.leave_id;
-            approval.approver_id = hr.user_id;
-            approval.approver_role_id = 5;
-            approval.action = ApprovalAction.Pending;
-            await leaveApprovalRepository.save(approval);
-          }
-          if (duration > 5) {
-            const admin = await userRepository.findOne({
-              where: { role_id: 1 },
+        const requiredApprovals = leave.required_approvals;
+        if (
+          requiredApprovals >= 1 &&
+          (userCredentials.role_id === 2 || userCredentials.role_id === 4)
+        ) {
+          if (user.manager_id) {
+            const manager = await userRepository.findOne({
+              where: { user_id: user.manager_id, role_id: 3 },
             });
-            if (admin) {
+            if (manager) {
               const approval = new LeaveApproval();
               approval.leave_id = savedLeave.leave_id;
-              approval.approver_id = admin.user_id;
-              approval.approver_role_id = 1;
+              approval.approver_id = manager.user_id;
+              approval.approver_role_id = 3;
               approval.action = ApprovalAction.Pending;
               await leaveApprovalRepository.save(approval);
             }
           }
-        } else if (userCredentials.role_id === 5) {
+        }
+        if (requiredApprovals >= 2) {
+          const hr = await userRepository.findOne({ where: { role_id: 5 } });
+          if (!hr) {
+            console.error(`applyLeave - No HR user found for role_id: 5`);
+            throw Boom.internal("No HR user available to approve leave");
+          }
+          const approval = new LeaveApproval();
+          approval.leave_id = savedLeave.leave_id;
+          approval.approver_id = hr.user_id;
+          approval.approver_role_id = 5;
+          approval.action = ApprovalAction.Pending;
+          await leaveApprovalRepository.save(approval);
+        }
+        if (requiredApprovals === 3) {
           const admin = await userRepository.findOne({ where: { role_id: 1 } });
           if (admin) {
             const approval = new LeaveApproval();
@@ -177,6 +209,7 @@ export class LeaveController {
           .response({
             message: "Leave applied successfully",
             leave: savedLeave,
+            toast: { message: "Leave applied successfully", type: "success" },
           })
           .code(201);
       }
@@ -208,6 +241,9 @@ export class LeaveController {
         }
         balance.used_days += duration;
         balance.available_days = balance.total_days - balance.used_days;
+        console.log(
+          `applyLeave - Balance update: user_id=${userCredentials.user_id}, type_id=${type_id}, duration=${duration}, new_used_days=${balance.used_days}, new_available_days=${balance.available_days}`
+        );
         await leaveBalanceRepository.save(balance);
       }
 
@@ -215,6 +251,7 @@ export class LeaveController {
         .response({
           message: "Leave applied successfully",
           leave: savedLeave,
+          toast: { message: "Leave applied successfully", type: "success" },
         })
         .code(201);
     } catch (error) {
@@ -274,12 +311,20 @@ export class LeaveController {
         if (balance) {
           balance.used_days -= duration;
           balance.available_days = balance.total_days - balance.used_days;
+          console.log(
+            `cancelLeave - Balance update: user_id=${userCredentials.user_id}, type_id=${leave.type_id}, duration=${duration}, new_used_days=${balance.used_days}, new_available_days=${balance.available_days}`
+          );
           await leaveBalanceRepository.save(balance);
         }
       }
 
       await leaveRepository.delete(leaveId);
-      return h.response({ message: "Leave cancelled successfully" }).code(200);
+      return h
+        .response({
+          message: "Leave cancelled successfully",
+          toast: { message: "Leave cancelled successfully", type: "success" },
+        })
+        .code(200);
     } catch (error) {
       if (Boom.isBoom(error)) throw error;
       console.error("Error cancelling leave:", error);
@@ -297,10 +342,30 @@ export class LeaveController {
       const leaveRepository = AppDataSource.getRepository(Leave);
       const leaves = await leaveRepository.find({
         where: { user_id: user.user_id },
-        relations: ["leaveType", "approvals"],
+        relations: ["leaveType", "approvals", "approvals.approver"],
         order: { applied_at: "DESC" },
       });
-      return h.response(leaves).code(200);
+
+      // Filter approvals to show only the latest action per approver
+      const filteredLeaves = leaves.map((leave) => {
+        const approverActions: { [key: number]: LeaveApproval } = {};
+        leave.approvals.forEach((approval) => {
+          if (
+            !approverActions[approval.approver_id] ||
+            (approval.action !== ApprovalAction.Pending &&
+              approverActions[approval.approver_id].action ===
+                ApprovalAction.Pending)
+          ) {
+            approverActions[approval.approver_id] = approval;
+          }
+        });
+        return {
+          ...leave,
+          approvals: Object.values(approverActions),
+        };
+      });
+
+      return h.response(filteredLeaves).code(200);
     } catch (error) {
       console.error("Error fetching leave history:", error);
       throw Boom.internal("Internal server error fetching leave history");
@@ -343,11 +408,12 @@ export class LeaveController {
 
       // Debug for Manager
       if (userCredentials.role_id === 3) {
-        console.log(`Fetching team for manager_id: ${userCredentials.user_id}`);
+        console.log(`Fetching team for manager:${userCredentials.user_id}`);
       }
 
       let leaves: Leave[] = [];
       let users: User[] = [];
+      let teamUsers: User[] = [];
       if (userCredentials.role_id === 1) {
         leaves = await leaveRepository.find({
           where: {
@@ -375,7 +441,7 @@ export class LeaveController {
         const team = await userRepository.find({
           where: { manager_id: userCredentials.user_id, role_id: In([2, 4]) },
         });
-        console.log(`Team for manager_id ${userCredentials.user_id}:`, team);
+        console.log(`Team for manager ${userCredentials.user_id}:`, team);
         const teamIds = team.map((u) => u.user_id);
         leaves = await leaveRepository.find({
           where: [
@@ -394,15 +460,13 @@ export class LeaveController {
           ],
           relations: ["user", "leaveType", "user.role"],
         });
-        console.log(
-          `Leaves for manager_id ${userCredentials.user_id}:`,
-          leaves
-        );
+        console.log(`Leaves for manager ${userCredentials.user_id}:`, leaves);
         const currentUser = await userRepository.findOne({
           where: { user_id: userCredentials.user_id },
         });
         if (currentUser) {
-          users = [...team, currentUser];
+          users = [...team];
+          teamUsers = team; // Store team users for Manager view
         }
       } else {
         leaves = await leaveRepository.find({
@@ -419,7 +483,6 @@ export class LeaveController {
         });
       }
 
-      const totalUsers = users.length;
       const calendarData = [];
       for (
         let d = new Date(startDate);
@@ -433,18 +496,46 @@ export class LeaveController {
           return date >= start && date <= end;
         });
         const leaveCount = onLeave.length;
-        const presentCount = totalUsers - leaveCount;
-        calendarData.push({
-          date: date.toISOString(),
-          leaves: onLeave.map((l) => ({
+        let usersData = [];
+
+        if (userCredentials.role_id === 3) {
+          // Include all team members (and Manager) with leave data if applicable
+          usersData = users.map((u) => {
+            const leave = onLeave.find((l) => l.user.user_id === u.user_id);
+            if (leave) {
+              return {
+                leave_id: leave.leave_id,
+                user_id: u.user_id,
+                user_name: u.name,
+                user_role_id: u.role_id,
+                user_role_name: u.role?.name || "Unknown",
+                leave_type: leave.leaveType.name,
+              };
+            }
+            // No leave data implies presence (handled in frontend)
+            return {
+              user_id: u.user_id,
+              user_name: u.name,
+              user_role_id: u.role_id,
+              user_role_name: u.role?.name || "Unknown",
+            };
+          });
+        } else {
+          // Existing logic for Admin/HR
+          usersData = onLeave.map((l) => ({
             leave_id: l.leave_id,
             user_id: l.user.user_id,
             user_name: l.user.name,
             user_role_id: l.user.role_id,
             user_role_name: l.user.role.name,
             leave_type: l.leaveType.name,
-          })),
-          counts: { leave: leaveCount, present: presentCount },
+          }));
+        }
+
+        calendarData.push({
+          date: date.toISOString(),
+          users: usersData,
+          counts: { leave: leaveCount, present: users.length - leaveCount },
         });
       }
 
@@ -469,6 +560,94 @@ export class LeaveController {
     } catch (error) {
       console.error("Error fetching holidays:", error);
       throw Boom.internal("Internal server error fetching holidays");
+    }
+  }
+
+  async bulkUploadHandler(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    const user = request.auth.credentials as {
+      user_id: number;
+      role_id: number;
+    };
+
+    const { file } = request.payload as { file: any };
+
+    if (!file || (!file._data && !file._readableState)) {
+      throw Boom.badRequest("CSV file is required for bulk upload.");
+    }
+
+    const leaves: Array<{
+      user_id: number;
+      leave_type_id: number;
+      start_date: string;
+      end_date: string;
+      reason?: string;
+    }> = [];
+
+    const stream = file._readableState ? file : Readable.from(file._data);
+
+    try {
+      const parser = stream.pipe(
+        parse({
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+        })
+      );
+
+      for await (const record of parser) {
+        // Validate required fields
+        if (
+          !record.user_id ||
+          !record.leave_type_id ||
+          !record.start_date ||
+          !record.end_date
+        ) {
+          throw Boom.badRequest(
+            "Each row must include user_id, leave_type_id, start_date, and end_date"
+          );
+        }
+
+        leaves.push({
+          user_id: parseInt(record.user_id),
+          leave_type_id: parseInt(record.leave_type_id),
+          start_date: record.start_date,
+          end_date: record.end_date,
+          reason: record.reason || "",
+        });
+      }
+
+      if (leaves.length === 0) {
+        throw Boom.badRequest("CSV is empty or has no valid rows.");
+      }
+
+      const jobId = `leave-bulk-job-${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+
+      await bulkLeaveQueue.add(
+        jobId,
+        {
+          submitted_by: user.user_id,
+          uploaded_at: new Date().toISOString(),
+          leaves,
+        },
+        {
+          removeOnComplete: true,
+          removeOnFail: false,
+        }
+      );
+
+      return h
+        .response({
+          message:
+            "Bulk leave upload submitted successfully. It will be processed shortly.",
+          jobId,
+          count: leaves.length,
+        })
+        .code(202);
+    } catch (err) {
+      console.error("Bulk upload error:", err);
+      throw Boom.internal("Failed to queue bulk leave upload");
     }
   }
 }

@@ -79,7 +79,7 @@ function Calendar() {
     setCurrentDate(newDate);
   }, [currentDate, view]);
 
-  const getLeaveTypeClass = useCallback((leaveType) => {
+  const getStatusClass = useCallback((leaveType) => {
     switch (leaveType?.toLowerCase()) {
       case "casual leave":
         return "leave-annual";
@@ -92,7 +92,7 @@ function Calendar() {
       case "loss of pay":
         return "leave-lop";
       default:
-        return "";
+        return "leave-present"; // No leave_type implies presence
     }
   }, []);
 
@@ -106,25 +106,25 @@ function Calendar() {
   const filteredData = useMemo(() => {
     if (!calendarData) return [];
     return calendarData.filter((day) => {
-      if (!day.leaves) return false;
+      if (!day.users) return false;
       const date = new Date(day.date);
       if (date > today) return false; // No availability data after today
       const matchesSearch = searchQuery
-        ? day.leaves.some((l) => {
+        ? day.users.some((u) => {
             const lowerSearch = searchQuery.toLowerCase();
             if (user.role_id === 1) {
-              return l.user_name.toLowerCase().includes(lowerSearch);
+              return u.user_name.toLowerCase().includes(lowerSearch);
             }
             if (user.role_id === 5) {
               return (
-                [2, 3, 4].includes(l.user_role_id) &&
-                l.user_name.toLowerCase().includes(lowerSearch)
+                [2, 3, 4].includes(u.user_role_id) &&
+                u.user_name.toLowerCase().includes(lowerSearch)
               );
             }
             if (user.role_id === 3) {
               return (
-                [2, 4].includes(l.user_role_id) &&
-                l.user_name.toLowerCase().includes(lowerSearch)
+                [2, 4].includes(u.user_role_id) &&
+                u.user_name.toLowerCase().includes(lowerSearch)
               );
             }
             return false;
@@ -214,16 +214,20 @@ function Calendar() {
               }`}
             >
               {view === "month" && date.getDate()}
-              {dayData?.leaves?.map((leave) => (
+              {dayData?.users?.map((userStatus) => (
                 <div
-                  key={`${leave.user_id}-${date.toISOString()}`}
-                  className={`leave-indicator ${getLeaveTypeClass(
-                    leave.leave_type
+                  key={`${userStatus.user_id}-${date.toISOString()}`}
+                  className={`leave-indicator ${getStatusClass(
+                    userStatus.leave_type
                   )}`}
-                  title={`${leave.user_name}: ${leave.leave_type}`}
+                  title={`${userStatus.user_name}: ${
+                    userStatus.leave_type || "Present"
+                  }`}
                 >
                   {view === "week" &&
-                    `${leave.user_name} (${leave.leave_type})`}
+                    `${userStatus.user_name} (${
+                      userStatus.leave_type || "Present"
+                    })`}
                 </div>
               ))}
               {showCounts && dayData && (

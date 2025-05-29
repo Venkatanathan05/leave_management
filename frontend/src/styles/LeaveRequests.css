@@ -4,7 +4,7 @@
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
   color: #e5e7eb;
-  max-width: 900px;
+  max-width: 600px;
   margin: 24px auto;
 }
 
@@ -86,6 +86,21 @@
   color: #d1d5db;
   margin: 12px 0;
   font-size: 0.875rem;
+}
+
+/* Toast container styling for dark theme */
+.Toastify__toast-container {
+  z-index: 9999;
+}
+
+.Toastify__toast--success {
+  background-color: #10b981;
+  color: #ffffff;
+}
+
+.Toastify__toast--error {
+  background-color: #ef4444;
+  color: #ffffff;
 }
 
 @media (max-width: 600px) {

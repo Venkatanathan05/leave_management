@@ -1,5 +1,6 @@
 import * as Hapi from "@hapi/hapi";
 import * as Boom from "@hapi/boom";
+import { In, LessThanOrEqual, MoreThanOrEqual } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { Leave, LeaveStatus } from "../entity/Leave";
 import { LeaveApproval, ApprovalAction } from "../entity/LeaveApproval";
@@ -7,7 +8,7 @@ import { User } from "../entity/User";
 import { LeaveBalance } from "../entity/LeaveBalance";
 import { calculateWorkingDays } from "../utils/dateUtils";
 import { checkApprovalStatus } from "../utils/approvalUtils";
-import { In, LessThanOrEqual, MoreThanOrEqual } from "typeorm";
+import { roleInitialBalances } from "../constants";
 
 export class ManagerController {
   async getUsers(request: Hapi.Request, h: Hapi.ResponseToolkit) {
@@ -23,7 +24,7 @@ export class ManagerController {
     try {
       const userRepository = AppDataSource.getRepository(User);
       const users = await userRepository.find({
-        where: { manager_id: userCredentials.user_id, role_id: In([2, 4]) }, // Employees, Interns
+        where: { manager_id: userCredentials.user_id, role_id: In([2, 4]) },
         select: ["user_id", "name", "email", "role_id", "manager_id"],
         relations: ["role"],
       });
@@ -117,6 +118,7 @@ export class ManagerController {
       const leaveRepository = AppDataSource.getRepository(Leave);
       const leaveApprovalRepository =
         AppDataSource.getRepository(LeaveApproval);
+      const leaveBalanceRepository = AppDataSource.getRepository(LeaveBalance);
 
       const leave = await leaveRepository.findOne({
         where: { leave_id: leaveId, status: LeaveStatus.Pending },
@@ -125,68 +127,141 @@ export class ManagerController {
       if (!leave) {
         throw Boom.notFound("Leave request not found or not pending");
       }
+      console.log(`Approving leave_id=${leaveId}:`, leave);
 
       if (leave.user.manager_id !== userCredentials.user_id) {
         throw Boom.forbidden("You are not the manager for this employee");
       }
 
       const existingApproval = await leaveApprovalRepository.findOne({
-        where: { leave_id: leaveId, approver_id: userCredentials.user_id },
+        where: {
+          leave_id: leaveId,
+          approver_id: userCredentials.user_id,
+          action: ApprovalAction.Pending,
+        },
       });
-      if (
-        existingApproval &&
-        existingApproval.action === ApprovalAction.Approved
-      ) {
-        throw Boom.conflict("Leave already approved by you");
+
+      let approval: LeaveApproval;
+      if (existingApproval) {
+        approval = existingApproval;
+        approval.action = ApprovalAction.Approved;
+        approval.comments = payload.comments || "";
+        approval.approved_at = new Date();
+      } else {
+        const finalApproval = await leaveApprovalRepository.findOne({
+          where: {
+            leave_id: leaveId,
+            approver_id: userCredentials.user_id,
+            action: In([ApprovalAction.Approved, ApprovalAction.Rejected]),
+          },
+        });
+        if (finalApproval) {
+          throw Boom.conflict(
+            `Leave already ${finalApproval.action.toLowerCase()} by you`
+          );
+        }
+        approval = new LeaveApproval();
+        approval.leave_id = leave.leave_id;
+        approval.approver_id = userCredentials.user_id;
+        approval.approver_role_id = userCredentials.role_id;
+        approval.action = ApprovalAction.Approved;
+        approval.comments = payload.comments || "";
+        approval.approved_at = new Date();
       }
 
-      const newApproval = new LeaveApproval();
-      newApproval.leave_id = leaveId;
-      newApproval.approver_id = userCredentials.user_id;
-      newApproval.approver_role_id = userCredentials.role_id;
-      newApproval.action = ApprovalAction.Approved;
-      newApproval.comments = payload.comments || "";
-      newApproval.approved_at = new Date();
+      console.log(`Saving approval for leave_id=${leaveId}:`, approval);
+      await leaveApprovalRepository.save(approval);
 
-      await leaveApprovalRepository.save(newApproval);
-
-      const updatedApprovals = [...leave.approvals, newApproval];
-      const { status, processed } = checkApprovalStatus(
-        leave,
-        updatedApprovals
+      leave.approvals = leave.approvals || [];
+      leave.approvals = leave.approvals.filter(
+        (a) => a.approval_id !== approval.approval_id
+      );
+      leave.approvals.push(approval);
+      const { status, processed } = checkApprovalStatus(leave, leave.approvals);
+      console.log(
+        `Leave_id=${leaveId} status=${status}, processed=${processed}`
       );
 
       leave.status = status;
       await leaveRepository.save(leave);
 
-      if (processed && status === LeaveStatus.Approved) {
-        const leaveBalanceRepository =
-          AppDataSource.getRepository(LeaveBalance);
-        const duration = calculateWorkingDays(
+      if (
+        processed &&
+        status === LeaveStatus.Approved &&
+        leave.required_approvals === 1
+      ) {
+        console.log(
+          `Updating balance for leave_id=${leaveId}, user_id=${leave.user_id}, type_id=${leave.type_id}`
+        );
+        let duration = calculateWorkingDays(
           new Date(leave.start_date),
           new Date(leave.end_date)
         );
-        const balance = await leaveBalanceRepository.findOne({
+        if (
+          duration === 0 &&
+          leave.start_date.toDateString() === leave.end_date.toDateString()
+        ) {
+          duration = 1;
+        }
+        console.log(`Calculated duration: ${duration} days`);
+
+        let balance = await leaveBalanceRepository.findOne({
           where: {
             user_id: leave.user_id,
             type_id: leave.type_id,
             year: new Date().getFullYear(),
           },
         });
-        if (balance && leave.leaveType.is_balance_based) {
+
+        if (!balance && leave.leaveType?.name) {
+          const initialBalance = roleInitialBalances[leave.user.role_id]?.find(
+            (rule) => rule.leaveTypeName === leave.leaveType.name
+          );
+          if (!initialBalance) {
+            console.error(
+              `No initial balance for role_id=${leave.user.role_id}, type_id=${leave.type_id}`
+            );
+            throw Boom.forbidden("No balance available for this leave type");
+          }
+          balance = new LeaveBalance();
+          balance.user_id = leave.user_id;
+          balance.type_id = leave.type_id;
+          balance.year = new Date().getFullYear();
+          balance.total_days = initialBalance.initialDays;
+          balance.used_days = 0;
+          balance.available_days = initialBalance.initialDays;
+          console.log(`Created new balance: ${JSON.stringify(balance)}`);
+          await leaveBalanceRepository.save(balance);
+        }
+
+        if (balance && leave.leaveType?.is_balance_based) {
+          console.log(`Balance before update: ${JSON.stringify(balance)}`);
           balance.used_days += duration;
           balance.available_days = balance.total_days - balance.used_days;
           await leaveBalanceRepository.save(balance);
+          console.log(`Balance after update: ${JSON.stringify(balance)}`);
+        } else {
+          console.log(
+            `No balance update for leave_id=${leaveId}: balance_exists=${!!balance}, is_balance_based=${
+              leave.leaveType?.is_balance_based
+            }`
+          );
         }
+      } else {
+        console.log(
+          `Balance update skipped for leave_id=${leaveId}: processed=${processed}, status=${status}, required_approvals=${leave.required_approvals}`
+        );
       }
 
       return h
-        .response({ message: `Leave ${status.toLowerCase()} successfully` })
+        .response({
+          message: `Leave ${status.toLowerCase()} successfully`,
+          toast: { type: "success", message: "Leave approved successfully" },
+        })
         .code(200);
     } catch (error) {
-      if (Boom.isBoom(error)) throw error;
-      console.error("Error approving leave request:", error);
-      throw Boom.internal("Internal server error approving leave");
+      console.error(`Error approving leave_id=${leaveId}:`, error);
+      throw Boom.internal("Internal server error approving request");
     }
   }
 
@@ -213,44 +288,68 @@ export class ManagerController {
 
       const leave = await leaveRepository.findOne({
         where: { leave_id: leaveId, status: LeaveStatus.Pending },
-        relations: ["user", "approvals"],
+        relations: ["user"],
       });
       if (!leave) {
         throw Boom.notFound("Leave request not found or not pending");
       }
+      console.log(`Rejecting leave_id=${leaveId}:`, leave);
 
       if (leave.user.manager_id !== userCredentials.user_id) {
         throw Boom.forbidden("You are not the manager for this employee");
       }
 
       const existingApproval = await leaveApprovalRepository.findOne({
-        where: { leave_id: leaveId, approver_id: userCredentials.user_id },
+        where: {
+          leave_id: leaveId,
+          approver_id: userCredentials.user_id,
+          action: ApprovalAction.Pending,
+        },
       });
-      if (
-        existingApproval &&
-        existingApproval.action === ApprovalAction.Rejected
-      ) {
-        throw Boom.conflict("Leave already rejected by you");
+
+      let approval: LeaveApproval;
+      if (existingApproval) {
+        approval = existingApproval;
+        approval.action = ApprovalAction.Rejected;
+        approval.comments = payload.comments || "";
+        approval.approved_at = new Date();
+      } else {
+        const finalApproval = await leaveApprovalRepository.findOne({
+          where: {
+            leave_id: leaveId,
+            approver_id: userCredentials.user_id,
+            action: In([ApprovalAction.Approved, ApprovalAction.Rejected]),
+          },
+        });
+        if (finalApproval) {
+          throw Boom.conflict(
+            `Leave already ${finalApproval.action.toLowerCase()} by you`
+          );
+        }
+        approval = new LeaveApproval();
+        approval.leave_id = leave.leave_id;
+        approval.approver_id = userCredentials.user_id;
+        approval.approver_role_id = userCredentials.role_id;
+        approval.action = ApprovalAction.Rejected;
+        approval.comments = payload.comments || "";
+        approval.approved_at = new Date();
       }
 
-      const newApproval = new LeaveApproval();
-      newApproval.leave_id = leaveId;
-      newApproval.approver_id = userCredentials.user_id;
-      newApproval.approver_role_id = userCredentials.role_id;
-      newApproval.action = ApprovalAction.Rejected;
-      newApproval.comments = payload.comments || "";
-      newApproval.approved_at = new Date();
-
-      await leaveApprovalRepository.save(newApproval);
+      console.log(`Saving rejection for leave_id=${leaveId}:`, approval);
+      await leaveApprovalRepository.save(approval);
 
       leave.status = LeaveStatus.Rejected;
       await leaveRepository.save(leave);
 
-      return h.response({ message: "Leave rejected successfully" }).code(200);
+      return h
+        .response({
+          message: "Leave rejected successfully",
+          toast: { type: "error", message: "Leave rejected" },
+        })
+        .code(200);
     } catch (error) {
-      if (Boom.isBoom(error)) throw error;
-      console.error("Error rejecting leave request:", error);
-      throw Boom.internal("Internal server error rejecting leave");
+      console.error(`Error rejecting leave_id=${leaveId}:`, error);
+      throw Boom.internal("Internal server error rejecting request");
     }
   }
 
@@ -335,7 +434,6 @@ export class ManagerController {
         })
         .code(200);
     } catch (error) {
-      if (Boom.isBoom(error)) throw error;
       console.error("Error fetching team availability:", error);
       throw Boom.internal("Internal server error fetching team availability");
     }

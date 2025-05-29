@@ -44,7 +44,10 @@ export const applyLeave = async (leaveData) => {
 
 export const getLeaveBalances = async (userId) => {
   const endpoint = userId ? `/leaves/balance/${userId}` : "/leaves/balance";
-  const response = await api.get(endpoint);
+  const response = await api.get(endpoint, {
+    params: { t: Date.now() }, // Cache-busting query param
+  });
+  console.log(`getLeaveBalances - userId=${userId}, endpoint=${endpoint}`);
   return response.data;
 };
 
@@ -253,33 +256,16 @@ export const getCalendarData = async ({ period, date }) => {
   }
 };
 
-export const checkLeaveOverlap = (startDate, endDate, existingLeaves) => {
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  let overlaps = false;
-  let isSubset = false;
-  let canMerge = false;
+export const cancelLeave = async (leaveId) => {
+  const response = await api.delete(`/leaves/${leaveId}`);
+  return response.data;
+};
 
-  for (const leave of existingLeaves) {
-    const leaveStart = new Date(leave.start_date);
-    const leaveEnd = new Date(leave.end_date);
-
-    if (
-      (start >= leaveStart && start <= leaveEnd) ||
-      (end >= leaveStart && end <= leaveEnd) ||
-      (start <= leaveStart && end >= leaveEnd)
-    ) {
-      overlaps = true;
-      if (start >= leaveStart && end <= leaveEnd) {
-        isSubset = true;
-      }
-      if (leave.status === "approved") {
-        canMerge = true;
-      }
-    }
-  }
-
-  return { overlaps, isSubset, canMerge };
+export const checkLeaveOverlap = async (startDate, endDate, userId) => {
+  const response = await api.get(`/leaves/${userId}/check-overlap`, {
+    params: { startDate, endDate },
+  });
+  return response.data;
 };
 
 export default api;

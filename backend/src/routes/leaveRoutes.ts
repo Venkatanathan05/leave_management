@@ -14,7 +14,6 @@ import {
   INTERN_ROLE_ID,
   HOLIDAYS_2025,
 } from "../constants";
-import moment from "moment";
 import { LeaveController } from "../controllers/leaveController";
 
 const leaveTypeRepository = AppDataSource.getRepository(LeaveType);
@@ -79,11 +78,19 @@ const leaveRoutes: Hapi.ServerRoute[] = [
         throw Boom.internal("Internal server error fetching leave types");
       }
     },
+    options: { auth: "jwt" },
   },
   {
     method: "POST",
     path: "/api/leaves",
     handler: (request, h) => leaveController.applyLeave(request, h),
+    options: { auth: "jwt" },
+  },
+
+  {
+    method: "POST",
+    path: "/api/leaves/bulk",
+    handler: (request, h) => leaveController.bulkUploadHandler(request, h),
     options: { auth: "jwt" },
   },
   {
@@ -104,6 +111,66 @@ const leaveRoutes: Hapi.ServerRoute[] = [
         return h.response(userBalances).code(200);
       } catch (error) {
         console.error("Error fetching user leave balances:", error);
+        throw Boom.internal("Internal server error fetching leave balances");
+      }
+    },
+    options: { auth: "jwt" },
+  },
+  {
+    method: "GET",
+    path: "/api/leaves/balance/{userId}",
+    handler: async (request: Hapi.Request, h: Hapi.ResponseToolkit) => {
+      const userCredentials = request.auth.credentials as {
+        user_id: number;
+        role_id: number;
+      };
+      const userId = parseInt(request.params.userId, 10);
+
+      if (isNaN(userId)) {
+        throw Boom.badRequest("Invalid user ID");
+      }
+
+      if (!userCredentials.user_id) {
+        throw Boom.unauthorized("User not authenticated or user ID missing");
+      }
+
+      // Allow Admins, HR, Managers to view others' balances; users can view their own
+      if (
+        userCredentials.user_id !== userId &&
+        ![ADMIN_ROLE_ID, MANAGER_ROLE_ID, 5].includes(userCredentials.role_id)
+      ) {
+        throw Boom.forbidden("Not authorized to view this user's balances");
+      }
+
+      // If Manager, ensure userId is in their team
+      if (
+        userCredentials.role_id === MANAGER_ROLE_ID &&
+        userCredentials.user_id !== userId
+      ) {
+        const teamMember = await userRepository.findOne({
+          where: { user_id: userId, manager_id: userCredentials.user_id },
+        });
+        if (!teamMember) {
+          throw Boom.forbidden("User is not in your team");
+        }
+      }
+
+      try {
+        const currentYear = new Date().getFullYear();
+        const userBalances = await leaveBalanceRepository.find({
+          where: { user_id: userId, year: currentYear },
+          relations: ["leaveType"],
+        });
+        if (!userBalances.length && userCredentials.user_id !== userId) {
+          throw Boom.notFound("No balances found for this user");
+        }
+        return h.response(userBalances).code(200);
+      } catch (error) {
+        console.error(
+          `Error fetching leave balances for user ${userId}:`,
+          error
+        );
+        if (Boom.isBoom(error)) throw error;
         throw Boom.internal("Internal server error fetching leave balances");
       }
     },

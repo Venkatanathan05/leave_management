@@ -1,0 +1,6 @@
+user_id,leave_type_id,start_date,end_date,reason
+1,2,2025-06-01,2025-06-03,Personal work
+2,1,2025-06-05,2025-06-06,Sick leave
+3,3,2025-06-10,2025-06-15,Family function
+1,2,2025-06-20,2025-06-22,Travel
+4,1,2025-06-25,2025-06-27,Medical emergency

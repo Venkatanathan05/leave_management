@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../auth/authContext.jsx";
 import { getMyLeaves } from "../api.js";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import "../styles/MyLeaves.css";
 
 function MyLeaves() {
   const { user } = useAuth();
-  const [leaves, setLeaves] = useState([]);
+  const [leaveHistory, setLeaveHistory] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -14,24 +16,54 @@ function MyLeaves() {
       setLoading(true);
       try {
         const data = await getMyLeaves();
-        setLeaves(data);
-      } catch {
-        setError("Failed to load leave history");
+        setLeaveHistory(data);
+      } catch (error) {
+        const errorMessage =
+          error.response?.data?.error || "Failed to load leave history";
+        setError(errorMessage);
+        toast.error(errorMessage, { position: "top-right" });
       } finally {
         setLoading(false);
       }
     };
-    fetchLeaves();
-  }, []);
+    if (user) fetchLeaves();
+  }, [user]);
+
+  const getApprovalStatus = (approvals) => {
+    // Filter to show only the latest approval per approver
+    const approverActions = {};
+    approvals.forEach((approval) => {
+      if (
+        !approverActions[approval.approver_id] ||
+        (approval.action !== "Pending" &&
+          approverActions[approval.approver_id].action === "Pending")
+      ) {
+        approverActions[approval.approver_id] = approval;
+      }
+    });
+
+    return Object.values(approverActions)
+      .map((approval) => {
+        const role =
+          approval.approver_role_id === 5
+            ? "HR"
+            : approval.approver_role_id === 3
+            ? "Manager"
+            : "Admin";
+        return `${role}: ${approval.action}`;
+      })
+      .join(", ");
+  };
 
   if (!user) return null;
 
   return (
     <div className="myleaves-container">
       <h2>My Leave History</h2>
+      <ToastContainer />
       {error && <p className="error">{error}</p>}
       {loading && <p>Loading...</p>}
-      {leaves.length > 0 ? (
+      {leaveHistory.length > 0 ? (
         <table className="myleaves-table">
           <thead>
             <tr>
@@ -44,7 +76,7 @@ function MyLeaves() {
             </tr>
           </thead>
           <tbody>
-            {leaves.map((leave, index) => (
+            {leaveHistory.map((leave, index) => (
               <tr key={leave.leave_id || `leave-${index}`}>
                 <td>{leave.leaveType?.name || "Unknown"}</td>
                 <td>{new Date(leave.start_date).toLocaleDateString()}</td>
@@ -52,24 +84,16 @@ function MyLeaves() {
                 <td>{leave.reason}</td>
                 <td>{leave.status}</td>
                 <td>
-                  {leave.approvals?.map((approval, idx) => (
-                    <span key={idx}>
-                      {approval.approver_role_id === 5
-                        ? "HR"
-                        : approval.approver_role_id === 3
-                        ? "Manager"
-                        : "Admin"}
-                      : {approval.action}
-                      {idx < leave.approvals.length - 1 ? ", " : ""}
-                    </span>
-                  ))}
+                  {leave.approvals?.length > 0
+                    ? getApprovalStatus(leave.approvals)
+                    : "None"}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       ) : (
-        <p>No leave requests found</p>
+        !loading && !error && <p>No leave requests found</p>
       )}
     </div>
   );

@@ -1,3 +1,6 @@
+import { LeaveStatus } from "../entity/Leave";
+import { HOLIDAYS_2025 } from "../constants";
+
 export const calculateWorkingDays = (
   startDate: Date,
   endDate: Date
@@ -6,12 +9,32 @@ export const calculateWorkingDays = (
   const currentDate = new Date(startDate.getTime());
   while (currentDate <= endDate) {
     const dayOfWeek = currentDate.getDay();
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+    if (dayOfWeek !== 0 && dayOfWeek !== 6 && !isHoliday(currentDate)) {
       count++;
     }
     currentDate.setDate(currentDate.getDate() + 1);
   }
   return count;
+};
+
+export const isWeekend = (date: Date): boolean => {
+  const dayOfWeek = date.getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6;
+};
+
+export const isHoliday = (date: Date): boolean => {
+  const formattedDate = date.toISOString().split("T")[0];
+  const rawDate = date.toISOString();
+  console.log(
+    `isHoliday - Input: raw=${rawDate}, formatted=${formattedDate}, HOLIDAYS_2025=${JSON.stringify(
+      HOLIDAYS_2025
+    )}, match=${
+      HOLIDAYS_2025.some((holiday) => holiday.date === formattedDate)
+        ? "yes"
+        : "no"
+    }`
+  );
+  return HOLIDAYS_2025.some((holiday) => holiday.date === formattedDate);
 };
 
 export type OverlapResult = {
@@ -29,12 +52,40 @@ export const checkLeaveOverlap = (
   newEndDate: Date,
   existingLeaves: { start_date: Date; end_date: Date; status: string }[]
 ): OverlapResult => {
+  // Normalize dates to midnight UTC, ignoring time components
+  const normalizeDate = (date: Date): Date => {
+    const normalized = new Date(
+      Date.UTC(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0)
+    );
+    console.log(
+      `normalizeDate - Input: ${date.toISOString()} -> Normalized: ${normalized.toISOString()}`
+    );
+    return normalized;
+  };
+
+  const normalizedNewStart = normalizeDate(newStartDate);
+  const normalizedNewEnd = normalizeDate(newEndDate);
+
+  console.log(
+    `checkLeaveOverlap - New leave: ${normalizedNewStart.toISOString()} to ${normalizedNewEnd.toISOString()}`
+  );
+
   for (const leave of existingLeaves) {
-    if (leave.status === "Pending" || leave.status === "Approved") {
-      const existingStart = new Date(leave.start_date);
-      const existingEnd = new Date(leave.end_date);
+    if (
+      leave.status === LeaveStatus.Pending ||
+      leave.status === LeaveStatus.Approved
+    ) {
+      const existingStart = normalizeDate(new Date(leave.start_date));
+      const existingEnd = normalizeDate(new Date(leave.end_date));
+      console.log(
+        `Existing leave: raw_start=${leave.start_date.toISOString()}, norm_start=${existingStart.toISOString()}, raw_end=${leave.end_date.toISOString()}, norm_end=${existingEnd.toISOString()}`
+      );
+
       // Subset: new leave fully within existing
-      if (newStartDate >= existingStart && newEndDate <= existingEnd) {
+      if (
+        normalizedNewStart >= existingStart &&
+        normalizedNewEnd <= existingEnd
+      ) {
         return {
           overlaps: true,
           isSubset: true,
@@ -43,18 +94,16 @@ export const checkLeaveOverlap = (
           message: `Leave already applied from ${existingStart.toLocaleDateString()} to ${existingEnd.toLocaleDateString()}`,
         };
       }
-      // Overlap or adjacent: merge possible
-      const oneDayMs = 24 * 60 * 60 * 1000;
+      // Overlap: new leave intersects with existing
       if (
-        (newStartDate <= existingEnd && newEndDate >= existingStart) ||
-        newStartDate.getTime() === existingEnd.getTime() + oneDayMs ||
-        newEndDate.getTime() === existingStart.getTime() - oneDayMs
+        normalizedNewStart <= existingEnd &&
+        normalizedNewEnd >= existingStart
       ) {
         const mergedStart = new Date(
-          Math.min(newStartDate.getTime(), existingStart.getTime())
+          Math.min(normalizedNewStart.getTime(), existingStart.getTime())
         );
         const mergedEnd = new Date(
-          Math.max(newEndDate.getTime(), existingEnd.getTime())
+          Math.max(normalizedNewEnd.getTime(), existingEnd.getTime())
         );
         return {
           overlaps: true,

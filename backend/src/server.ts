@@ -1,5 +1,6 @@
 import * as Hapi from "@hapi/hapi";
 import * as Jwt from "@hapi/jwt";
+import * as Inert from "@hapi/inert"; // <-- Added
 import { adminRoutes } from "./routes/adminRoutes";
 import { authRoutes } from "./routes/authRoutes";
 import { hrRoutes } from "./routes/hrRoutes";
@@ -9,7 +10,7 @@ import { AppDataSource } from "./data-source";
 
 const init = async () => {
   const server = Hapi.server({
-    port: process.env.PORT || 5000,
+    port: process.env.PORT || 5001,
     host: "localhost",
     routes: {
       cors: {
@@ -18,10 +19,15 @@ const init = async () => {
         additionalHeaders: ["cache-control", "x-requested-with"],
         credentials: true,
       },
+      payload: {
+        maxBytes: 10485760, // 10MB
+        parse: true,
+        multipart: { output: "stream" }, // <--- Required for file upload
+      },
     },
   });
 
-  await server.register(Jwt);
+  await server.register([Jwt, Inert]);
 
   server.auth.strategy("jwt", "jwt", {
     keys: process.env.JWT_SECRET || "your_super_secret_jwt_key",
@@ -35,11 +41,6 @@ const init = async () => {
       timeSkewSec: 15,
     },
     validate: (artifacts, request, h) => {
-      console.log("JWT validate:", {
-        user_id: artifacts.decoded.payload.user_id,
-        role_id: artifacts.decoded.payload.role_id,
-        scope: artifacts.decoded.payload.scope,
-      });
       return {
         isValid: true,
         credentials: {
@@ -66,6 +67,7 @@ const init = async () => {
     ...hrRoutes,
     ...leaveRoutes,
     ...managerRoutes,
+    // Add bulkUploadRoutes after implementation
   ]);
 
   await AppDataSource.initialize();

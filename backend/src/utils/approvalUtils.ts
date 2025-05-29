@@ -43,6 +43,9 @@ export const checkApprovalStatus = (
   if (requiredApprovals >= 2 && approvedCount >= 1) {
     return { status: LeaveStatus.Pending, processed: false }; // Awaiting HR
   }
+  if (requiredApprovals >= 2 && approvedCount === 0) {
+    return { status: LeaveStatus.Pending, processed: false }; // Awaiting Manager
+  }
 
   return { status: LeaveStatus.Pending, processed: false };
 };

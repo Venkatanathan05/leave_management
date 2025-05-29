@@ -27,7 +27,7 @@ export class HRController {
     try {
       const userRepository = AppDataSource.getRepository(User);
       const users = await userRepository.find({
-        where: { role_id: In([2, 3, 4]) }, // Employees, Managers, Interns
+        where: { role_id: In([2, 3, 4]) },
         select: ["user_id", "name", "email", "role_id", "manager_id"],
         relations: ["role"],
       });
@@ -153,30 +153,31 @@ export class HRController {
       }
 
       const existingApproval = await leaveApprovalRepository.findOne({
-        where: { leave_id: leaveId, approver_id: userCredentials.user_id },
+        where: {
+          leave_id: leaveId,
+          approver_id: userCredentials.user_id,
+          action: In([ApprovalAction.Approved, ApprovalAction.Rejected]),
+        },
       });
-      if (
-        existingApproval &&
-        existingApproval.action === ApprovalAction.Approved
-      ) {
-        throw Boom.conflict("Leave already approved by you");
+      if (existingApproval) {
+        throw Boom.conflict(
+          `Leave already ${existingApproval.action.toLowerCase()} by you`
+        );
       }
 
       const newApproval = new LeaveApproval();
-      newApproval.leave_id = leaveId;
+      newApproval.leave_id = leave.leave_id;
       newApproval.approver_id = userCredentials.user_id;
       newApproval.approver_role_id = userCredentials.role_id;
       newApproval.action = ApprovalAction.Approved;
       newApproval.comments = payload.comments || "";
       newApproval.approved_at = new Date();
+      console.log("New approval before insert:", newApproval);
+      await leaveApprovalRepository.insert(newApproval);
 
-      await leaveApprovalRepository.save(newApproval);
-
-      const updatedApprovals = [...leave.approvals, newApproval];
-      const { status, processed } = checkApprovalStatus(
-        leave,
-        updatedApprovals
-      );
+      leave.approvals = leave.approvals || [];
+      leave.approvals.push(newApproval);
+      const { status, processed } = checkApprovalStatus(leave, leave.approvals);
 
       leave.status = status;
       await leaveRepository.save(leave);
@@ -202,7 +203,6 @@ export class HRController {
         .response({ message: `Leave ${status.toLowerCase()} successfully` })
         .code(200);
     } catch (error) {
-      if (Boom.isBoom(error)) throw error;
       console.error("Error approving leave:", error);
       throw Boom.internal("Internal server error approving leave");
     }
@@ -251,31 +251,33 @@ export class HRController {
       }
 
       const existingApproval = await leaveApprovalRepository.findOne({
-        where: { leave_id: leaveId, approver_id: userCredentials.user_id },
+        where: {
+          leave_id: leaveId,
+          approver_id: userCredentials.user_id,
+          action: In([ApprovalAction.Approved, ApprovalAction.Rejected]),
+        },
       });
-      if (
-        existingApproval &&
-        existingApproval.action === ApprovalAction.Rejected
-      ) {
-        throw Boom.conflict("Leave already rejected by you");
+      if (existingApproval) {
+        throw Boom.conflict(
+          `Leave already ${existingApproval.action.toLowerCase()} by you`
+        );
       }
 
       const newApproval = new LeaveApproval();
-      newApproval.leave_id = leaveId;
+      newApproval.leave_id = leave.leave_id;
       newApproval.approver_id = userCredentials.user_id;
       newApproval.approver_role_id = userCredentials.role_id;
       newApproval.action = ApprovalAction.Rejected;
       newApproval.comments = payload.comments || "";
       newApproval.approved_at = new Date();
-
-      await leaveApprovalRepository.save(newApproval);
+      console.log("New approval before insert:", newApproval);
+      await leaveApprovalRepository.insert(newApproval);
 
       leave.status = LeaveStatus.Rejected;
       await leaveRepository.save(leave);
 
       return h.response({ message: "Leave rejected successfully" }).code(200);
     } catch (error) {
-      if (Boom.isBoom(error)) throw error;
       console.error("Error rejecting leave:", error);
       throw Boom.internal("Internal server error rejecting leave");
     }

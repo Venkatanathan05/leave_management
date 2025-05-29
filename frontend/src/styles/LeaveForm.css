@@ -1,14 +1,14 @@
-.leave-form-container {
+.form-container {
   padding: 24px;
-  max-width: 500px;
-  margin: 0 auto;
+  max-width: 700px;
+  margin: 0 190px;
   background-color: #1f2937;
   border-radius: 8px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
   color: #e5e7eb;
 }
 
-.leave-form-container h2 {
+.form-container h2 {
   color: #60a5fa;
   margin-bottom: 24px;
   font-size: 1.5rem;

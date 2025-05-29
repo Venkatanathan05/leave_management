@@ -11,9 +11,11 @@ import {
   approveAdminLeave,
   rejectAdminLeave,
 } from "../api.js";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import "../styles/LeaveRequests.css";
 
-function LeaveRequests() {
+function LeaveRequests({ onApproval }) {
   const { user } = useAuth();
   const [requests, setRequests] = useState([]);
   const [error, setError] = useState("");
@@ -33,8 +35,12 @@ function LeaveRequests() {
           data = await getAdminPendingRequests();
         }
         setRequests(data);
-      } catch {
-        setError("Failed to load requests. Please try again.");
+      } catch (error) {
+        const errorMessage =
+          error.response?.data?.error ||
+          "Failed to load requests. Please try again.";
+        setError(errorMessage);
+        toast.error(errorMessage, { position: "top-right" });
       } finally {
         setLoading(false);
       }
@@ -44,31 +50,47 @@ function LeaveRequests() {
 
   const handleApprove = async (leaveId) => {
     try {
+      let response;
       if (user.role_id === 5) {
-        await approveHRLeave(leaveId, "");
+        response = await approveHRLeave(leaveId, "");
       } else if (user.role_id === 3) {
-        await approveManagerLeave(leaveId, "");
+        response = await approveManagerLeave(leaveId, "");
       } else if (user.role_id === 1) {
-        await approveAdminLeave(leaveId, "");
+        response = await approveAdminLeave(leaveId, "");
       }
       setRequests(requests.filter((req) => req.leave_id !== leaveId));
-    } catch {
-      setError("Failed to approve request");
+      if (response.toast) {
+        toast.success(response.toast.message, { position: "top-right" });
+      }
+      if (onApproval) onApproval();
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.error || "Failed to approve request";
+      setError(errorMessage);
+      toast.error(errorMessage, { position: "top-right" });
     }
   };
 
   const handleReject = async (leaveId) => {
     try {
+      let response;
       if (user.role_id === 5) {
-        await rejectHRLeave(leaveId, "");
+        response = await rejectHRLeave(leaveId, "");
       } else if (user.role_id === 3) {
-        await rejectManagerLeave(leaveId, "");
+        response = await rejectManagerLeave(leaveId, "");
       } else if (user.role_id === 1) {
-        await rejectAdminLeave(leaveId, "");
+        response = await rejectAdminLeave(leaveId, "");
       }
       setRequests(requests.filter((req) => req.leave_id !== leaveId));
-    } catch {
-      setError("Failed to reject request");
+      if (response.toast) {
+        toast.error(response.toast.message, { position: "top-right" });
+      }
+      if (onApproval) onApproval();
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.error || "Failed to reject request";
+      setError(errorMessage);
+      toast.error(errorMessage, { position: "top-right" });
     }
   };
 
@@ -77,6 +99,7 @@ function LeaveRequests() {
   return (
     <div className="leave-requests">
       <h2>Pending Leave Requests</h2>
+      <ToastContainer />
       {loading && <p>Loading...</p>}
       {error && <p className="error">{error}</p>}
       {requests.length > 0 ? (
