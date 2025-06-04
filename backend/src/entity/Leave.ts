@@ -11,11 +11,13 @@ import { LeaveType } from "./LeaveType";
 import { LeaveApproval } from "./LeaveApproval";
 
 export enum LeaveStatus {
-  Pending = "Pending",
+  Pending = "Pending", // Initial state for all new requests (if requires_approval)
+  Pending_Manager_Approval = "Pending_Manager_Approval", // Explicitly awaiting manager
+  Pending_HR_Approval = "Pending_HR_Approval", // Explicitly awaiting HR
+  Awaiting_Admin_Approval = "Awaiting_Admin_Approval", // Already exists
   Approved = "Approved",
   Rejected = "Rejected",
   Cancelled = "Cancelled",
-  Awaiting_Admin_Approval = "Awaiting_Admin_Approval",
 }
 
 @Entity("leaves")

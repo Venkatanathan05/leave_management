@@ -61,23 +61,31 @@ export class ManagerController {
       let leaves: Leave[] = [];
 
       if (userCredentials.role_id === 1) {
+        // Admin: get leaves pending Admin or general Pending status
         leaves = await leaveRepository.find({
           where: {
             status: In([
               LeaveStatus.Pending,
               LeaveStatus.Awaiting_Admin_Approval,
+              LeaveStatus.Pending_Manager_Approval, // optionally include if admin should see these too
             ]),
           },
           relations: ["user", "leaveType", "approvals"],
           order: { applied_at: "ASC" },
         });
       } else if (userCredentials.role_id === 3) {
+        // Manager: get leaves with status Pending or Pending_Manager_Approval for employees managed by this manager
         leaves = await leaveRepository
           .createQueryBuilder("leave")
           .leftJoinAndSelect("leave.user", "user")
           .leftJoinAndSelect("leave.leaveType", "leaveType")
           .leftJoinAndSelect("leave.approvals", "approvals")
-          .where("leave.status = :pending", { pending: LeaveStatus.Pending })
+          .where("leave.status IN (:...statuses)", {
+            statuses: [
+              LeaveStatus.Pending,
+              LeaveStatus.Pending_Manager_Approval,
+            ],
+          })
           .andWhere("user.manager_id = :managerId", {
             managerId: userCredentials.user_id,
           })
@@ -121,9 +129,16 @@ export class ManagerController {
       const leaveBalanceRepository = AppDataSource.getRepository(LeaveBalance);
 
       const leave = await leaveRepository.findOne({
-        where: { leave_id: leaveId, status: LeaveStatus.Pending },
+        where: {
+          leave_id: leaveId,
+          status: In([
+            LeaveStatus.Pending,
+            LeaveStatus.Pending_Manager_Approval, // Support for newer flow
+          ]),
+        },
         relations: ["user", "leaveType", "approvals"],
       });
+
       if (!leave) {
         throw Boom.notFound("Leave request not found or not pending");
       }

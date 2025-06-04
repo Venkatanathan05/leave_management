@@ -10,7 +10,10 @@ import {
   isWeekend,
   isHoliday,
 } from "../utils/dateUtils";
-import { getRequiredApprovals } from "../utils/approvalUtils";
+import {
+  checkApprovalStatus,
+  getRequiredApprovals,
+} from "../utils/approvalUtils";
 import { HOLIDAYS_2025, roleInitialBalances } from "../constants";
 import { User } from "../entity/User";
 import { LeaveType } from "../entity/LeaveType";
@@ -142,27 +145,40 @@ export class LeaveController {
       leave.end_date = parsedEndDate;
       leave.reason = reason;
       leave.applied_at = new Date();
-      leave.status = leaveType.requires_approval
-        ? LeaveStatus.Pending
-        : LeaveStatus.Approved;
-      leave.user = user;
-      leave.leaveType = leaveType;
+      // REMOVE THIS LINE: leave.status = leaveType.requires_approval ? LeaveStatus.Pending : LeaveStatus.Approved;
+      leave.user = user; // Ensure user is attached for getRequiredApprovals and checkApprovalStatus
+      leave.leaveType = leaveType; // Ensure leaveType is attached for getRequiredApprovals
+
+      // Calculate required_approvals FIRST
       leave.required_approvals = getRequiredApprovals(leave);
+
+      // Determine initial status based on required_approvals and applicant role
+      // For a new leave, there are no existing approvals yet, so pass an empty array for approvals.
+      const { status: initialStatus } = checkApprovalStatus(leave, []);
+      leave.status = initialStatus; // Set the status derived from checkApprovalStatus
 
       const duration = calculateWorkingDays(parsedStartDate, parsedEndDate);
       console.log(
         `applyLeave - Setting required_approvals: ${leave.required_approvals}`
       );
+      console.log(`applyLeave - Setting initial status: ${leave.status}`); // Add this log for verification!
+
       const savedLeave = await leaveRepository.save(leave);
       console.log(`applyLeave - Saved leave: ${JSON.stringify(savedLeave)}`);
 
       if (leaveType.requires_approval && userCredentials.role_id !== 1) {
+        // Admin doesn't create approvals for self here
         const leaveApprovalRepository =
           AppDataSource.getRepository(LeaveApproval);
+
+        // No need to recalculate requiredApprovals, use leave.required_approvals
         const requiredApprovals = leave.required_approvals;
+
+        // Conditional creation of approval records
+        // 1. Manager approval for Employee/Intern
         if (
-          requiredApprovals >= 1 &&
-          (userCredentials.role_id === 2 || userCredentials.role_id === 4)
+          (userCredentials.role_id === 2 || userCredentials.role_id === 4) &&
+          requiredApprovals >= 1
         ) {
           if (user.manager_id) {
             const manager = await userRepository.findOne({
@@ -172,13 +188,18 @@ export class LeaveController {
               const approval = new LeaveApproval();
               approval.leave_id = savedLeave.leave_id;
               approval.approver_id = manager.user_id;
-              approval.approver_role_id = 3;
+              approval.approver_role_id = 3; // Manager role
               approval.action = ApprovalAction.Pending;
               await leaveApprovalRepository.save(approval);
             }
           }
         }
-        if (requiredApprovals >= 2) {
+
+        // 2. HR approval (for Employees after Manager approval, or directly for Managers)
+        // This is necessary if requiredApprovals is 2 or 3.
+        // We already ensure requiredApprovals is 2 or 3 for managers/HR by getRequiredApprovals
+        if (requiredApprovals >= 2 && userCredentials.role_id !== 5) {
+          // HR doesn't approve own leave
           const hr = await userRepository.findOne({ where: { role_id: 5 } });
           if (!hr) {
             console.error(`applyLeave - No HR user found for role_id: 5`);
@@ -187,17 +208,20 @@ export class LeaveController {
           const approval = new LeaveApproval();
           approval.leave_id = savedLeave.leave_id;
           approval.approver_id = hr.user_id;
-          approval.approver_role_id = 5;
+          approval.approver_role_id = 5; // HR role
           approval.action = ApprovalAction.Pending;
           await leaveApprovalRepository.save(approval);
         }
-        if (requiredApprovals === 3) {
+
+        // 3. Admin approval (if requiredApprovals is 3)
+        if (requiredApprovals === 3 && userCredentials.role_id !== 1) {
+          // Admin doesn't approve own leave
           const admin = await userRepository.findOne({ where: { role_id: 1 } });
           if (admin) {
             const approval = new LeaveApproval();
             approval.leave_id = savedLeave.leave_id;
             approval.approver_id = admin.user_id;
-            approval.approver_role_id = 1;
+            approval.approver_role_id = 1; // Admin role
             approval.action = ApprovalAction.Pending;
             await leaveApprovalRepository.save(approval);
           }
@@ -214,38 +238,7 @@ export class LeaveController {
           .code(201);
       }
 
-      const currentYear = new Date().getFullYear();
-      let balance = await leaveBalanceRepository.findOne({
-        where: { user_id: userCredentials.user_id, type_id, year: currentYear },
-      });
-      if (!balance) {
-        const initialBalance = roleInitialBalances[
-          userCredentials.role_id
-        ]?.find((rule) => rule.leaveTypeName === leaveType.name);
-        if (!initialBalance) {
-          throw Boom.forbidden("No balance available for this leave type");
-        }
-        balance = new LeaveBalance();
-        balance.user_id = userCredentials.user_id;
-        balance.type_id = type_id;
-        balance.year = currentYear;
-        balance.total_days = initialBalance.initialDays;
-        balance.used_days = 0;
-        balance.available_days = initialBalance.initialDays;
-      }
-
-      if (leave.status === LeaveStatus.Approved) {
-        if (balance.available_days < duration) {
-          await leaveRepository.delete(savedLeave.leave_id);
-          throw Boom.forbidden("Insufficient leave balance");
-        }
-        balance.used_days += duration;
-        balance.available_days = balance.total_days - balance.used_days;
-        console.log(
-          `applyLeave - Balance update: user_id=${userCredentials.user_id}, type_id=${type_id}, duration=${duration}, new_used_days=${balance.used_days}, new_available_days=${balance.available_days}`
-        );
-        await leaveBalanceRepository.save(balance);
-      }
+      // ... (rest of your balance logic, no changes needed here unless it's impacting status)
 
       return h
         .response({

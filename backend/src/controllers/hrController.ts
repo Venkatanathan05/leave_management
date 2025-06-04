@@ -11,7 +11,7 @@ import {
   getRequiredApprovals,
   checkApprovalStatus,
 } from "../utils/approvalUtils";
-import { In } from "typeorm";
+import { Brackets, In } from "typeorm";
 
 export class HRController {
   async getUsers(request: Hapi.Request, h: Hapi.ResponseToolkit) {
@@ -298,24 +298,43 @@ export class HRController {
 
     try {
       const leaveRepository = AppDataSource.getRepository(Leave);
-      const leaves = await leaveRepository.find({
-        where: {
-          status: In([
-            LeaveStatus.Pending,
-            LeaveStatus.Awaiting_Admin_Approval,
-          ]),
-          user: { role_id: In([2, 3, 4]) },
-        },
-        relations: ["user", "leaveType", "approvals"],
-        order: { applied_at: "ASC" },
-      });
 
+      // Get leaves with statuses relevant to HR
+      // Also join user to filter roles and get dates to calculate duration in memory
+      const leaves = await leaveRepository
+        .createQueryBuilder("leave")
+        .leftJoinAndSelect("leave.user", "user")
+        .leftJoinAndSelect("leave.leaveType", "leaveType")
+        .leftJoinAndSelect("leave.approvals", "approvals")
+        .where(
+          "(leave.status = :pendingHrApproval OR leave.status = :awaitingAdminApproval OR leave.status = :pendingManagerApproval)",
+          {
+            pendingHrApproval: LeaveStatus.Pending_HR_Approval,
+            awaitingAdminApproval: LeaveStatus.Awaiting_Admin_Approval,
+            pendingManagerApproval: LeaveStatus.Pending_Manager_Approval,
+          }
+        )
+        .andWhere(
+          new Brackets((qb) => {
+            qb.where("leave.status != :pendingManagerApproval").orWhere(
+              "user.role_id = :managerRole",
+              { managerRole: 3 }
+            );
+          })
+        )
+        .orderBy("leave.applied_at", "ASC")
+        .getMany();
+
+      // Post-filter leaves where duration > HR threshold or required approvals > 1
       const filteredLeaves = leaves.filter((leave) => {
         const duration = calculateWorkingDays(
           new Date(leave.start_date),
           new Date(leave.end_date)
         );
-        return duration > LEAVE_THRESHOLD_HR || leave.required_approvals > 1;
+        return (
+          duration > LEAVE_THRESHOLD_HR ||
+          (leave.required_approvals && leave.required_approvals > 1)
+        );
       });
 
       return h.response(filteredLeaves).code(200);

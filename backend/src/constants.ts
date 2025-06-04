@@ -4,8 +4,8 @@ export const MANAGER_ROLE_ID = 3;
 export const INTERN_ROLE_ID = 4;
 export const HR_ROLE_ID = 5;
 
-export const LEAVE_THRESHOLD_HR = 5; // Days requiring HR approval
-export const LEAVE_THRESHOLD_ADMIN = 10; // Days requiring Admin approval
+export const LEAVE_THRESHOLD_HR = 3; // Days requiring HR approval
+export const LEAVE_THRESHOLD_ADMIN = 4; // Days requiring Admin approval
 
 export const roleInitialBalances: {
   [roleId: number]: { leaveTypeName: string; initialDays: number }[];
