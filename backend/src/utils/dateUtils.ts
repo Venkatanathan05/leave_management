@@ -14,6 +14,7 @@ export const calculateWorkingDays = (
     }
     currentDate.setDate(currentDate.getDate() + 1);
   }
+  console.log(count);
   return count;
 };
 

@@ -22,13 +22,13 @@ export class LeaveBalance {
   @Column({ type: "int" })
   year!: number;
 
-  @Column({ type: "decimal", precision: 10, scale: 2 })
+  @Column({ type: "int" })
   total_days!: number;
 
-  @Column({ type: "decimal", precision: 10, scale: 2, default: 0.0 })
+  @Column({ type: "int" })
   used_days!: number;
 
-  @Column({ type: "decimal", precision: 10, scale: 2, default: 0.0 })
+  @Column({ type: "int" })
   available_days!: number;
 
   @ManyToOne(() => User, (user) => user.leaveBalances)

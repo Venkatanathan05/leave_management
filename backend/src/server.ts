@@ -14,7 +14,7 @@ const init = async () => {
     host: "localhost",
     routes: {
       cors: {
-        origin: ["http://localhost:5173"],
+        origin: ["http://localhost:5175"],
         headers: ["Accept", "Authorization", "Content-Type", "If-None-Match"],
         additionalHeaders: ["cache-control", "x-requested-with"],
         credentials: true,

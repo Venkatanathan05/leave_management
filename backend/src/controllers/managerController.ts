@@ -236,7 +236,11 @@ export class ManagerController {
 
         if (balance && leave.leaveType?.is_balance_based) {
           console.log(`Balance before update: ${JSON.stringify(balance)}`);
+          console.log("Prev Used Days : " + balance.used_days);
           balance.used_days += duration;
+          console.log("Used Days : " + balance.used_days);
+          console.log("Duration: " + duration);
+          console.log("");
           balance.available_days = balance.total_days - balance.used_days;
           await leaveBalanceRepository.save(balance);
           console.log(`Balance after update: ${JSON.stringify(balance)}`);
