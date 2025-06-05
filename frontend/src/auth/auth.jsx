@@ -5,10 +5,12 @@ import { AuthContext } from "./authContext.jsx";
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
+
     if (storedToken && storedUser) {
       try {
         const decoded = jwtDecode(storedToken);
@@ -22,6 +24,8 @@ export function AuthProvider({ children }) {
         logout();
       }
     }
+
+    setLoading(false); // important!
   }, []);
 
   const login = (token, user) => {
@@ -33,7 +37,7 @@ export function AuthProvider({ children }) {
         name: user.name,
         email: user.email,
         role_id: user.role_id,
-        role_name: user.role_name, // Added
+        role_name: user.role_name,
       })
     );
     setToken(token);
@@ -54,7 +58,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

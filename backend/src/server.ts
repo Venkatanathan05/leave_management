@@ -7,6 +7,7 @@ import { hrRoutes } from "./routes/hrRoutes";
 import { leaveRoutes } from "./routes/leaveRoutes";
 import { managerRoutes } from "./routes/managerRoutes";
 import { AppDataSource } from "./data-source";
+import { bulkUploadRoutes } from "./routes/bulkUploadRoute";
 
 const init = async () => {
   const server = Hapi.server({
@@ -14,15 +15,15 @@ const init = async () => {
     host: "localhost",
     routes: {
       cors: {
-        origin: ["http://localhost:5175"],
+        origin: ["http://localhost:5173"],
         headers: ["Accept", "Authorization", "Content-Type", "If-None-Match"],
         additionalHeaders: ["cache-control", "x-requested-with"],
         credentials: true,
       },
       payload: {
-        maxBytes: 10485760, // 10MB
+        maxBytes: 10485760,
         parse: true,
-        multipart: { output: "stream" }, // <--- Required for file upload
+        multipart: { output: "stream" },
       },
     },
   });
@@ -67,7 +68,7 @@ const init = async () => {
     ...hrRoutes,
     ...leaveRoutes,
     ...managerRoutes,
-    // Add bulkUploadRoutes after implementation
+    ...bulkUploadRoutes,
   ]);
 
   await AppDataSource.initialize();

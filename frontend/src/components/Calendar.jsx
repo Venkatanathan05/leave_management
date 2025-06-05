@@ -13,7 +13,7 @@ function Calendar() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const today = useMemo(() => new Date(), []); // Stabilize today
+  const today = useMemo(() => new Date(), []);
 
   const fetchData = useCallback(async () => {
     if (!user) return;
@@ -92,7 +92,7 @@ function Calendar() {
       case "loss of pay":
         return "leave-lop";
       default:
-        return "leave-present"; // No leave_type implies presence
+        return "leave-present";
     }
   }, []);
 
@@ -108,7 +108,7 @@ function Calendar() {
     return calendarData.filter((day) => {
       if (!day.users) return false;
       const date = new Date(day.date);
-      if (date > today) return false; // No availability data after today
+      if (date > today) return false;
       const matchesSearch = searchQuery
         ? day.users.some((u) => {
             const lowerSearch = searchQuery.toLowerCase();

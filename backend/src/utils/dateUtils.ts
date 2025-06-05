@@ -4,18 +4,21 @@ import { HOLIDAYS_2025 } from "../constants";
 export const calculateWorkingDays = (
   startDate: Date,
   endDate: Date
-): number => {
-  let count = 0;
+): { total: number; working: number } => {
+  let total = 0;
+  let working = 0;
+
   const currentDate = new Date(startDate.getTime());
   while (currentDate <= endDate) {
     const dayOfWeek = currentDate.getDay();
+    total++;
     if (dayOfWeek !== 0 && dayOfWeek !== 6 && !isHoliday(currentDate)) {
-      count++;
+      working++;
     }
     currentDate.setDate(currentDate.getDate() + 1);
   }
-  console.log(count);
-  return count;
+
+  return { total, working };
 };
 
 export const isWeekend = (date: Date): boolean => {

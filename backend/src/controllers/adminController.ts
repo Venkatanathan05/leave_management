@@ -6,31 +6,25 @@ import { Leave, LeaveStatus } from "../entity/Leave";
 import { LeaveBalance } from "../entity/LeaveBalance";
 import { LeaveApproval, ApprovalAction } from "../entity/LeaveApproval";
 import { Role } from "../entity/Role";
-import {
-  LEAVE_THRESHOLD_HR,
-  LEAVE_THRESHOLD_ADMIN,
-  roleInitialBalances,
-} from "../constants";
+import { roleInitialBalances } from "../constants";
 import { calculateWorkingDays } from "../utils/dateUtils";
-import {
-  getRequiredApprovals,
-  checkApprovalStatus,
-} from "../utils/approvalUtils";
+import { checkApprovalStatus } from "../utils/approvalUtils";
 import { hashPassword } from "../utils/authUtils";
 import { LeaveType } from "../entity/LeaveType";
 import { In } from "typeorm";
 
 export class AdminController {
   async createUser(request: Hapi.Request, h: Hapi.ResponseToolkit) {
-    const { name, email, role_id, manager_id } = request.payload as {
+    const { name, email, role_id, manager_id, password } = request.payload as {
       name: string;
       email: string;
       role_id: number;
       manager_id?: number;
+      password: string;
     };
 
-    if (!name || !email || !role_id) {
-      throw Boom.badRequest("Name, email, and role_id are required");
+    if (!name || !email || !role_id || !password) {
+      throw Boom.badRequest("Name, email, role_id, and password are required");
     }
 
     try {
@@ -58,10 +52,13 @@ export class AdminController {
         }
       }
 
+      // Hash the password provided by user
+      const hashedPassword = await hashPassword(password);
+
       const user = new User();
       user.name = name;
       user.email = email;
-      user.password_hash = await hashPassword("defaultPassword123");
+      user.password_hash = hashedPassword;
       user.role_id = role_id;
       user.manager_id = manager_id || null;
 
@@ -251,13 +248,13 @@ export class AdminController {
         throw Boom.notFound("Leave request not found");
       }
 
-      const duration = calculateWorkingDays(
+      const { working } = calculateWorkingDays(
         new Date(leave.start_date),
         new Date(leave.end_date)
       );
       if (
         (leave.user.role_id === 2 || leave.user.role_id === 4) &&
-        duration > 5
+        working > 5
       ) {
         const managerApproved = leave.approvals.some(
           (a) =>
@@ -270,7 +267,7 @@ export class AdminController {
         if (!managerApproved || !hrApproved) {
           throw Boom.badRequest("Manager and HR approval required first");
         }
-      } else if (leave.user.role_id === 3 && duration > 5) {
+      } else if (leave.user.role_id === 3 && working > 5) {
         const hrApproved = leave.approvals.some(
           (a) =>
             a.approver_role_id === 5 && a.action === ApprovalAction.Approved
@@ -321,7 +318,7 @@ export class AdminController {
           },
         });
         if (balance && leave.leaveType.is_balance_based) {
-          balance.used_days += duration;
+          balance.used_days += working;
           balance.available_days = balance.total_days - balance.used_days;
           await leaveBalanceRepository.save(balance);
         }
@@ -361,13 +358,13 @@ export class AdminController {
         throw Boom.notFound("Leave request not found");
       }
 
-      const duration = calculateWorkingDays(
+      const { working } = calculateWorkingDays(
         new Date(leave.start_date),
         new Date(leave.end_date)
       );
       if (
         (leave.user.role_id === 2 || leave.user.role_id === 4) &&
-        duration > 5
+        working > 5
       ) {
         const managerApproved = leave.approvals.some(
           (a) =>
@@ -380,7 +377,7 @@ export class AdminController {
         if (!managerApproved || !hrApproved) {
           throw Boom.badRequest("Manager and HR approval required first");
         }
-      } else if (leave.user.role_id === 3 && duration > 5) {
+      } else if (leave.user.role_id === 3 && working > 5) {
         const hrApproved = leave.approvals.some(
           (a) =>
             a.approver_role_id === 5 && a.action === ApprovalAction.Approved

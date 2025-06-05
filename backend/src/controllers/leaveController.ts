@@ -286,7 +286,7 @@ export class LeaveController {
         );
       }
 
-      const duration = calculateWorkingDays(
+      const { working } = calculateWorkingDays(
         new Date(leave.start_date),
         new Date(leave.end_date)
       );
@@ -302,10 +302,10 @@ export class LeaveController {
           },
         });
         if (balance) {
-          balance.used_days -= duration;
+          balance.used_days -= working;
           balance.available_days = balance.total_days - balance.used_days;
           console.log(
-            `cancelLeave - Balance update: user_id=${userCredentials.user_id}, type_id=${leave.type_id}, duration=${duration}, new_used_days=${balance.used_days}, new_available_days=${balance.available_days}`
+            `cancelLeave - Balance update: user_id=${userCredentials.user_id}, type_id=${leave.type_id}, duration=${working}, new_used_days=${balance.used_days}, new_available_days=${balance.available_days}`
           );
           await leaveBalanceRepository.save(balance);
         }

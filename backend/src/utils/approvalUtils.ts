@@ -4,28 +4,24 @@ import { LEAVE_THRESHOLD_HR, LEAVE_THRESHOLD_ADMIN } from "../constants";
 import { calculateWorkingDays } from "./dateUtils";
 
 export const getRequiredApprovals = (leave: Leave): number => {
-  const duration = calculateWorkingDays(
+  const { working } = calculateWorkingDays(
     new Date(leave.start_date),
     new Date(leave.end_date)
   );
 
-  // If leave type doesn't require approval, no approvals needed.
+  // Now use 'working' in comparisons
   if (!leave.leaveType.requires_approval) return 0;
 
-  // Determine base approvals based on duration
-  let approvalsNeeded = 1; // Default to manager only
+  let approvalsNeeded = 1;
 
-  if (duration > LEAVE_THRESHOLD_HR) {
-    approvalsNeeded = 2; // Manager -> HR
+  if (working > LEAVE_THRESHOLD_HR) {
+    approvalsNeeded = 2;
   }
-  if (duration > LEAVE_THRESHOLD_ADMIN) {
-    approvalsNeeded = 3; // Manager -> HR -> Admin
+  if (working > LEAVE_THRESHOLD_ADMIN) {
+    approvalsNeeded = 3;
   }
 
-  // Override or add approvals based on applicant's role
-  // Assuming managers, HR, and Admin leaves go directly to HR or Admin.
-  // Adjust these rules based on your company's policy.
-  const applicantRoleId = leave.user?.role_id; // Ensure 'user' relation is loaded or pass user.role_id directly
+  const applicantRoleId = leave.user?.role_id;
 
   if (applicantRoleId === 3) {
     // Manager applying
@@ -93,8 +89,6 @@ export const checkApprovalStatus = (
     return { status: LeaveStatus.Approved, processed: true };
   }
 
-  // Scenario A: HR applying for leave (role_id 5)
-  // Scenario A: HR applying for leave (role_id 5)
   if (applicantRoleId === 5) {
     if (requiredApprovals === 3) {
       if (approvedCount === 0) {
@@ -109,16 +103,13 @@ export const checkApprovalStatus = (
         };
       }
     }
-  }
-
-  // Scenario B: Manager applying for leave (role_id 3)
-  else if (applicantRoleId === 3) {
+  } else if (applicantRoleId === 3) {
     if (requiredApprovals === 2) {
       if (approvedCount === 0) {
         return { status: LeaveStatus.Pending_HR_Approval, processed: false };
       } else if (approvedCount === 1) {
         return {
-          status: LeaveStatus.Approved, // ✅ Add this!
+          status: LeaveStatus.Approved,
           processed: true,
         };
       }
@@ -132,15 +123,12 @@ export const checkApprovalStatus = (
         };
       } else if (approvedCount === 2) {
         return {
-          status: LeaveStatus.Approved, // ✅ Add this too!
+          status: LeaveStatus.Approved,
           processed: true,
         };
       }
     }
-  }
-
-  // Scenario C: Employee/Intern (role_id 2 or 4)
-  else if (applicantRoleId === 2 || applicantRoleId === 4) {
+  } else if (applicantRoleId === 2 || applicantRoleId === 4) {
     if (requiredApprovals === 3) {
       if (approvedCount === 0) {
         return {

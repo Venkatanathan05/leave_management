@@ -30,7 +30,6 @@ function MyLeaves() {
   }, [user]);
 
   const getApprovalStatus = (approvals) => {
-    // Filter to show only the latest approval per approver
     const approverActions = {};
     approvals.forEach((approval) => {
       if (

@@ -208,17 +208,17 @@ export class ManagerController {
         console.log(
           `Updating balance for leave_id=${leaveId}, user_id=${leave.user_id}, type_id=${leave.type_id}`
         );
-        let duration = calculateWorkingDays(
+        let { working } = calculateWorkingDays(
           new Date(leave.start_date),
           new Date(leave.end_date)
         );
         if (
-          duration === 0 &&
+          working === 0 &&
           leave.start_date.toDateString() === leave.end_date.toDateString()
         ) {
-          duration = 1;
+          working = 1;
         }
-        console.log(`Calculated duration: ${duration} days`);
+        console.log(`Calculated duration: ${working} days`);
 
         let balance = await leaveBalanceRepository.findOne({
           where: {
@@ -252,9 +252,9 @@ export class ManagerController {
         if (balance && leave.leaveType?.is_balance_based) {
           console.log(`Balance before update: ${JSON.stringify(balance)}`);
           console.log("Prev Used Days : " + balance.used_days);
-          balance.used_days += duration;
+          balance.used_days += working;
           console.log("Used Days : " + balance.used_days);
-          console.log("Duration: " + duration);
+          console.log("Duration: " + working);
           console.log("");
           balance.available_days = balance.total_days - balance.used_days;
           await leaveBalanceRepository.save(balance);

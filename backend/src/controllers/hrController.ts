@@ -135,13 +135,13 @@ export class HRController {
         throw Boom.notFound("Leave request not found");
       }
 
-      const duration = calculateWorkingDays(
+      const { working } = calculateWorkingDays(
         new Date(leave.start_date),
         new Date(leave.end_date)
       );
       if (
         (leave.user.role_id === 2 || leave.user.role_id === 4) &&
-        duration > 5
+        working > 5
       ) {
         const managerApproved = leave.approvals.some(
           (a) =>
@@ -193,7 +193,7 @@ export class HRController {
           },
         });
         if (balance && leave.leaveType.is_balance_based) {
-          balance.used_days += duration;
+          balance.used_days += working;
           balance.available_days = balance.total_days - balance.used_days;
           await leaveBalanceRepository.save(balance);
         }
@@ -233,13 +233,13 @@ export class HRController {
         throw Boom.notFound("Leave request not found");
       }
 
-      const duration = calculateWorkingDays(
+      const { working } = calculateWorkingDays(
         new Date(leave.start_date),
         new Date(leave.end_date)
       );
       if (
         (leave.user.role_id === 2 || leave.user.role_id === 4) &&
-        duration > 5
+        working > 5
       ) {
         const managerApproved = leave.approvals.some(
           (a) =>
@@ -299,8 +299,6 @@ export class HRController {
     try {
       const leaveRepository = AppDataSource.getRepository(Leave);
 
-      // Get leaves with statuses relevant to HR
-      // Also join user to filter roles and get dates to calculate duration in memory
       const leaves = await leaveRepository
         .createQueryBuilder("leave")
         .leftJoinAndSelect("leave.user", "user")
@@ -327,12 +325,12 @@ export class HRController {
 
       // Post-filter leaves where duration > HR threshold or required approvals > 1
       const filteredLeaves = leaves.filter((leave) => {
-        const duration = calculateWorkingDays(
+        const { working } = calculateWorkingDays(
           new Date(leave.start_date),
           new Date(leave.end_date)
         );
         return (
-          duration > LEAVE_THRESHOLD_HR ||
+          working > LEAVE_THRESHOLD_HR ||
           (leave.required_approvals && leave.required_approvals > 1)
         );
       });
