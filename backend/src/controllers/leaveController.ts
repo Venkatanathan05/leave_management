@@ -77,20 +77,28 @@ export class LeaveController {
       );
 
       // Check for weekends and holidays
-      const currentDate = new Date(parsedStartDate);
-      while (currentDate <= parsedEndDate) {
-        console.log(`applyLeave - Checking date: ${currentDate.toISOString()}`);
-        if (isWeekend(currentDate)) {
-          throw Boom.badRequest(
-            `Cannot apply leave on weekend: ${currentDate.toLocaleDateString()}`
-          );
-        }
-        if (isHoliday(currentDate)) {
-          throw Boom.badRequest(
-            `Cannot apply leave on holiday: ${currentDate.toLocaleDateString()}`
-          );
-        }
-        currentDate.setDate(currentDate.getDate() + 1);
+      // const currentDate = new Date(parsedStartDate);
+      // while (currentDate <= parsedEndDate) {
+      //   console.log(`applyLeave - Checking date: ${currentDate.toISOString()}`);
+      //   if (isWeekend(currentDate)) {
+      //     throw Boom.badRequest(
+      //       `Cannot apply leave on weekend: ${currentDate.toLocaleDateString()}`
+      //     );
+      //   }
+      //   if (isHoliday(currentDate)) {
+      //     throw Boom.badRequest(
+      //       `Cannot apply leave on holiday: ${currentDate.toLocaleDateString()}`
+      //     );
+      //   }
+      //   currentDate.setDate(currentDate.getDate() + 1);
+      // }
+
+      const workingDayInfo = calculateWorkingDays(
+        parsedStartDate,
+        parsedEndDate
+      );
+      if (workingDayInfo.working === 0) {
+        throw Boom.badRequest("Selected leave range includes no working days.");
       }
 
       // Use raw query to fetch exact database dates
@@ -145,15 +153,11 @@ export class LeaveController {
       leave.end_date = parsedEndDate;
       leave.reason = reason;
       leave.applied_at = new Date();
-      // REMOVE THIS LINE: leave.status = leaveType.requires_approval ? LeaveStatus.Pending : LeaveStatus.Approved;
-      leave.user = user; // Ensure user is attached for getRequiredApprovals and checkApprovalStatus
-      leave.leaveType = leaveType; // Ensure leaveType is attached for getRequiredApprovals
+      leave.user = user;
+      leave.leaveType = leaveType;
 
-      // Calculate required_approvals FIRST
       leave.required_approvals = getRequiredApprovals(leave);
 
-      // Determine initial status based on required_approvals and applicant role
-      // For a new leave, there are no existing approvals yet, so pass an empty array for approvals.
       const { status: initialStatus } = checkApprovalStatus(leave, []);
       leave.status = initialStatus; // Set the status derived from checkApprovalStatus
 
@@ -195,9 +199,6 @@ export class LeaveController {
           }
         }
 
-        // 2. HR approval (for Employees after Manager approval, or directly for Managers)
-        // This is necessary if requiredApprovals is 2 or 3.
-        // We already ensure requiredApprovals is 2 or 3 for managers/HR by getRequiredApprovals
         if (requiredApprovals >= 2 && userCredentials.role_id !== 5) {
           // HR doesn't approve own leave
           const hr = await userRepository.findOne({ where: { role_id: 5 } });

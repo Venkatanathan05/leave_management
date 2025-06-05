@@ -1,31 +1,56 @@
-.dashboard-content {
-  padding: 24px;
-  background-color: #111827;
+.dashboard-page {
+  background-color: #0f172a;
   min-height: 100vh;
-  color: #e5e7eb;
+}
+
+.dashboard-layout {
+  display: flex;
+}
+
+.dashboard-main {
+  flex: 1;
+  padding-top: 50px;
+  margin-left: 250px;
+  margin-bottom: 50px;
+}
+
+.dashboard-content {
+  padding: 2rem;
+  background-color: #0f172a;
+  min-height: 100vh;
+  color: #f1f5f9;
 }
 
 .dashboard-content h1 {
-  font-size: 2rem;
-  font-weight: 700;
+  font-size: 2.25rem;
+  font-weight: 800;
   color: #60a5fa;
-  margin-bottom: 24px;
+  margin-bottom: 2rem;
+  letter-spacing: -0.025em;
 }
 
 .dashboard-content h2 {
   font-size: 1.5rem;
   font-weight: 600;
-  color: #d1d5db;
-  margin: 24px 0 16px;
+  color: #cbd5e1;
+  margin: 2rem 0 1.5rem;
+  letter-spacing: -0.025em;
 }
 
 @media (max-width: 768px) {
+  .dashboard-main {
+    padding-top: 64px;
+    margin-left: 200px;
+  }
+
   .dashboard-content {
-    padding: 16px;
+    padding: 1.5rem;
   }
+
   .dashboard-content h1 {
-    font-size: 1.75rem;
+    font-size: 2rem;
   }
+
   .dashboard-content h2 {
     font-size: 1.25rem;
   }

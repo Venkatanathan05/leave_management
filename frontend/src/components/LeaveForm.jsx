@@ -28,7 +28,7 @@ function LeaveForm() {
         ]);
         setLeaveTypes(types);
         setLeaveBalances(balances);
-        setError(""); // Clear previous errors if successful
+        setError("");
       } catch (err) {
         const message =
           err.response?.data?.message || "Failed to load leave data";

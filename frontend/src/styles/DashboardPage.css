@@ -1,6 +1,7 @@
 .dashboard-page {
-  background-color: #111827;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
   min-height: 100vh;
+  color: #f1f5f9;
 }
 
 .dashboard-layout {
@@ -9,14 +10,14 @@
 
 .dashboard-main {
   flex: 1;
-  padding-top: 50px; /* Space for navbar */
+  padding: 3rem 2rem 3rem 2rem;
   margin-left: 250px; /* Space for fixed sidebar */
-  margin-bottom: 50px;
+  transition: all 0.2s ease;
 }
 
 @media (max-width: 768px) {
   .dashboard-main {
-    padding-top: 64px;
+    padding: 2rem 1rem;
     margin-left: 200px; /* Match sidebar width */
   }
 }

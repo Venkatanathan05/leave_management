@@ -1,18 +1,20 @@
 .myleaves-container {
-  padding: 24px;
+  padding: 2rem;
   max-width: 1000px;
   margin: 0 auto;
-  background-color: #1f2937;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-  color: #e5e7eb;
+  background-color: #1e293b;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  color: #f1f5f9;
+  border: 1px solid #334155;
 }
 
 .myleaves-container h2 {
   color: #60a5fa;
-  margin-bottom: 24px;
-  font-size: 1.5rem;
-  font-weight: 600;
+  margin-bottom: 2rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
 }
 
 .myleaves-table {
@@ -20,50 +22,54 @@
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.875rem;
-  background-color: #374151;
-  border-radius: 8px;
+  background-color: #334155;
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .myleaves-table th,
 .myleaves-table td {
-  padding: 12px 16px;
+  padding: 1rem 1.25rem;
   text-align: left;
 }
 
 .myleaves-table th {
-  background-color: #2563eb;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #ffffff;
   font-weight: 600;
   text-transform: uppercase;
   font-size: 0.75rem;
+  letter-spacing: 0.05em;
 }
 
 .myleaves-table td {
-  background-color: #374151;
-  color: #d1d5db;
-  border-top: 1px solid #4b5563;
+  background-color: #334155;
+  color: #cbd5e1;
+  border-top: 1px solid #475569;
+  transition: background-color 0.2s ease;
 }
 
-.myleaves-table tr:hover {
-  background-color: #4b5563;
+.myleaves-table tr:hover td {
+  background-color: #475569;
 }
 
 .error {
   color: #ef4444;
-  margin: 12px 0;
+  margin: 1rem 0;
   font-size: 0.875rem;
+  font-weight: 500;
 }
 
 @media (max-width: 600px) {
   .myleaves-container {
-    padding: 16px;
+    padding: 1.5rem;
   }
   .myleaves-table {
     font-size: 0.75rem;
   }
   .myleaves-table th,
   .myleaves-table td {
-    padding: 8px 12px;
+    padding: 0.75rem 1rem;
   }
 }

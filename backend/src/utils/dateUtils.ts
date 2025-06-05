@@ -85,7 +85,6 @@ export const checkLeaveOverlap = (
         `Existing leave: raw_start=${leave.start_date.toISOString()}, norm_start=${existingStart.toISOString()}, raw_end=${leave.end_date.toISOString()}, norm_end=${existingEnd.toISOString()}`
       );
 
-      // Subset: new leave fully within existing
       if (
         normalizedNewStart >= existingStart &&
         normalizedNewEnd <= existingEnd
@@ -98,7 +97,7 @@ export const checkLeaveOverlap = (
           message: `Leave already applied from ${existingStart.toLocaleDateString()} to ${existingEnd.toLocaleDateString()}`,
         };
       }
-      // Overlap: new leave intersects with existing
+
       if (
         normalizedNewStart <= existingEnd &&
         normalizedNewEnd >= existingStart

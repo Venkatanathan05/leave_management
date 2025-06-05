@@ -1,28 +1,38 @@
 .welcome-card {
-  padding: 24px;
-  background-color: #374151;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-  margin-bottom: 24px;
+  padding: 2rem;
+  background: #1e293b;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3), 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+  border: 1px solid #334155;
+  transition: all 0.2s ease;
+}
+
+.welcome-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4), 0 8px 12px rgba(0, 0, 0, 0.15);
 }
 
 .welcome-card h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.5rem;
+  font-weight: 700;
   color: #60a5fa;
-  margin-bottom: 8px;
+  margin-bottom: 1rem;
+  letter-spacing: -0.025em;
 }
 
 .welcome-card p {
   font-size: 0.875rem;
-  color: #d1d5db;
+  color: #cbd5e1;
+  line-height: 1.6;
+  font-weight: 500;
 }
 
 @media (max-width: 600px) {
   .welcome-card {
-    padding: 16px;
+    padding: 1.5rem;
   }
   .welcome-card h3 {
-    font-size: 1rem;
+    font-size: 1.25rem;
   }
 }

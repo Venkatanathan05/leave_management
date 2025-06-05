@@ -9,7 +9,6 @@ export const getRequiredApprovals = (leave: Leave): number => {
     new Date(leave.end_date)
   );
 
-  // Now use 'working' in comparisons
   if (!leave.leaveType.requires_approval) return 0;
 
   let approvalsNeeded = 1;
@@ -24,19 +23,10 @@ export const getRequiredApprovals = (leave: Leave): number => {
   const applicantRoleId = leave.user?.role_id;
 
   if (applicantRoleId === 3) {
-    // Manager applying
-    // If manager's leave always needs HR or Admin approval
-    if (approvalsNeeded < 2) approvalsNeeded = 2; // At least HR approval
+    if (approvalsNeeded < 2) approvalsNeeded = 2;
   } else if (applicantRoleId === 5) {
-    // HR applying
-    // If HR's leave always needs Admin approval (or higher HR approval)
-    if (approvalsNeeded < 3) approvalsNeeded = 3; // At least Admin approval
+    if (approvalsNeeded < 3) approvalsNeeded = 3;
   } else if (applicantRoleId === 1) {
-    // Admin applying (maybe auto-approve or special flow)
-    // For Admin applying, it might bypass all approvals or go to a very specific approver
-    // For now, let's assume it also goes to Admin as a placeholder for internal audit/record.
-    // Or you might return 0 if Admin leaves are auto-approved for simplicity.
-    // For now, assume it's like HR's, needing Admin.
     if (approvalsNeeded < 3) approvalsNeeded = 3;
   }
 
@@ -61,12 +51,11 @@ export const checkApprovalStatus = (
         )
   );
 
-  // Case 1: Any rejection overrides everything else
   if (validApprovals.some((a) => a.action === ApprovalAction.Rejected)) {
     return { status: LeaveStatus.Rejected, processed: true };
   }
 
-  const requiredApprovers = [3, 5, 1]; // Manager → HR → Admin
+  const requiredApprovers = [3, 5, 1];
   const actualApprovals = new Map();
 
   for (const approverRole of requiredApprovers) {
@@ -84,7 +73,6 @@ export const checkApprovalStatus = (
 
   const approvedCount = approvedRoles.length;
 
-  // Case 2: All required approvals met
   if (approvedCount >= requiredApprovals) {
     return { status: LeaveStatus.Approved, processed: true };
   }
@@ -98,7 +86,7 @@ export const checkApprovalStatus = (
         };
       } else if (approvedCount === 1) {
         return {
-          status: LeaveStatus.Approved, // ✅ Fix
+          status: LeaveStatus.Approved,
           processed: true,
         };
       }
@@ -155,14 +143,9 @@ export const checkApprovalStatus = (
     } else if (requiredApprovals === 1) {
       return { status: LeaveStatus.Pending_Manager_Approval, processed: false };
     }
-  }
-  // Scenario D: Admin (role_id 1) or fallback - treat like employee or auto-approved
-  else {
-    // If Admin's own leave needs to be handled differently, add logic here
-    // Otherwise fallback to Pending_Manager_Approval for safety
+  } else {
     return { status: LeaveStatus.Pending_Manager_Approval, processed: false };
   }
 
-  // Default fallback (should not generally be reached)
   return { status: LeaveStatus.Pending_Manager_Approval, processed: false };
 };
