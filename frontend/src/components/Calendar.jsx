@@ -97,8 +97,10 @@ function Calendar() {
   }, []);
 
   const isWeekend = (date) => date.getDay() === 0 || date.getDay() === 6;
-  const isHoliday = (date) =>
-    holidays.some((h) => h.date === date.toISOString().split("T")[0]);
+  const isHoliday = useCallback(
+    (date) => holidays.some((h) => h.date === date.toISOString().split("T")[0]),
+    [holidays]
+  );
 
   const canSearch = () =>
     user?.role_id === 1 || user?.role_id === 5 || user?.role_id === 3;
@@ -123,7 +125,8 @@ function Calendar() {
             }
             if (user.role_id === 3) {
               return (
-                [2, 4].includes(u.user_role_id) &&
+                ([2, 4].includes(u.user_role_id) ||
+                  u.user_id === user.user_id) &&
                 u.user_name.toLowerCase().includes(lowerSearch)
               );
             }
@@ -132,7 +135,7 @@ function Calendar() {
         : true;
       return matchesSearch;
     });
-  }, [calendarData, searchQuery, user?.role_id, today]);
+  }, [calendarData, searchQuery, user, today]);
 
   return (
     <div className="calendar-container">
@@ -214,22 +217,25 @@ function Calendar() {
               }`}
             >
               {view === "month" && date.getDate()}
-              {dayData?.users?.map((userStatus) => (
-                <div
-                  key={`${userStatus.user_id}-${date.toISOString()}`}
-                  className={`leave-indicator ${getStatusClass(
-                    userStatus.leave_type
-                  )}`}
-                  title={`${userStatus.user_name}: ${
-                    userStatus.leave_type || "Present"
-                  }`}
-                >
-                  {view === "week" &&
-                    `${userStatus.user_name} (${
+              {!isWeekOff &&
+                !isHolidayDay &&
+                dayData?.users?.map((userStatus) => (
+                  <div
+                    key={`${userStatus.user_id}-${date.toISOString()}`}
+                    className={`leave-indicator ${getStatusClass(
+                      userStatus.leave_type
+                    )}`}
+                    title={`${userStatus.user_name}: ${
                       userStatus.leave_type || "Present"
-                    })`}
-                </div>
-              ))}
+                    }`}
+                  >
+                    {view === "week" &&
+                      `${userStatus.user_name} (${
+                        userStatus.leave_type || "Present"
+                      })`}
+                  </div>
+                ))}
+
               {showCounts && dayData && (
                 <div className="count-indicators">
                   <span className="leave-count">

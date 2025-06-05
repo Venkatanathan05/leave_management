@@ -5,12 +5,9 @@ import { User } from "../entity/User";
 import { Leave, LeaveStatus } from "../entity/Leave";
 import { LeaveBalance } from "../entity/LeaveBalance";
 import { LeaveApproval, ApprovalAction } from "../entity/LeaveApproval";
-import { LEAVE_THRESHOLD_HR, LEAVE_THRESHOLD_ADMIN } from "../constants";
+import { LEAVE_THRESHOLD_HR } from "../constants";
 import { calculateWorkingDays } from "../utils/dateUtils";
-import {
-  getRequiredApprovals,
-  checkApprovalStatus,
-} from "../utils/approvalUtils";
+import { checkApprovalStatus } from "../utils/approvalUtils";
 import { Brackets, In } from "typeorm";
 
 export class HRController {

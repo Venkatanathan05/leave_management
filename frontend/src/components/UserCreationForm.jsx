@@ -124,22 +124,26 @@ function UserCreationForm() {
             <option value="5">HR</option>
           </select>
         </div>
-        <div className="form-group">
-          <label htmlFor="manager_id">Manager</label>
-          <select
-            id="manager_id"
-            name="manager_id"
-            value={formData.manager_id}
-            onChange={handleChange}
-          >
-            <option value="">No Manager</option>
-            {managers.map((m) => (
-              <option key={m.user_id} value={m.user_id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {(formData.role_id === "2" || formData.role_id === "4") && (
+          <div className="form-group">
+            <label htmlFor="manager_id">Manager</label>
+            <select
+              id="manager_id"
+              name="manager_id"
+              value={formData.manager_id}
+              onChange={handleChange}
+              required
+            >
+              <option value="">Select Manager</option>
+              {managers.map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="form-group">
           <label htmlFor="password">Password</label>
           <input

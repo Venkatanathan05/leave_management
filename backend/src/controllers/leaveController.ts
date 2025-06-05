@@ -4,17 +4,12 @@ import { AppDataSource } from "../data-source";
 import { Leave, LeaveStatus } from "../entity/Leave";
 import { LeaveBalance } from "../entity/LeaveBalance";
 import { LeaveApproval, ApprovalAction } from "../entity/LeaveApproval";
-import {
-  calculateWorkingDays,
-  checkLeaveOverlap,
-  isWeekend,
-  isHoliday,
-} from "../utils/dateUtils";
+import { calculateWorkingDays, checkLeaveOverlap } from "../utils/dateUtils";
 import {
   checkApprovalStatus,
   getRequiredApprovals,
 } from "../utils/approvalUtils";
-import { HOLIDAYS_2025, roleInitialBalances } from "../constants";
+import { HOLIDAYS_2025 } from "../constants";
 import { User } from "../entity/User";
 import { LeaveType } from "../entity/LeaveType";
 import { LessThanOrEqual, MoreThanOrEqual, In } from "typeorm";
@@ -166,6 +161,26 @@ export class LeaveController {
         `applyLeave - Setting required_approvals: ${leave.required_approvals}`
       );
       console.log(`applyLeave - Setting initial status: ${leave.status}`); // Add this log for verification!
+
+      if (leaveType.is_balance_based) {
+        const leaveBalance = await leaveBalanceRepository.findOne({
+          where: {
+            user_id: userCredentials.user_id,
+            type_id: type_id,
+          },
+        });
+
+        if (!leaveBalance) {
+          throw Boom.badRequest("Leave balance record not found");
+        }
+
+        const requestedDays = duration.working;
+        if (leaveBalance.available_days < requestedDays) {
+          throw Boom.badRequest(
+            `Insufficient leave balance. You have ${leaveBalance.available_days} days, but requested ${requestedDays} days.`
+          );
+        }
+      }
 
       const savedLeave = await leaveRepository.save(leave);
       console.log(`applyLeave - Saved leave: ${JSON.stringify(savedLeave)}`);
@@ -410,26 +425,39 @@ export class LeaveController {
       let teamUsers: User[] = [];
       if (userCredentials.role_id === 1) {
         leaves = await leaveRepository.find({
-          where: {
-            status: LeaveStatus.Approved,
-            start_date: LessThanOrEqual(endDate),
-            end_date: MoreThanOrEqual(startDate),
-          },
+          where: [
+            {
+              status: LeaveStatus.Approved,
+              start_date: LessThanOrEqual(endDate),
+              end_date: MoreThanOrEqual(startDate),
+            },
+            {
+              status: LeaveStatus.Pending,
+              start_date: LessThanOrEqual(endDate),
+              end_date: MoreThanOrEqual(startDate),
+            },
+          ],
           relations: ["user", "leaveType", "user.role"],
         });
+
         users = await userRepository.find();
       } else if (userCredentials.role_id === 5) {
         leaves = await leaveRepository.find({
-          where: {
-            status: LeaveStatus.Approved,
-            start_date: LessThanOrEqual(endDate),
-            end_date: MoreThanOrEqual(startDate),
-            user: { role_id: In([2, 3, 4]) },
-          },
+          where: [
+            {
+              status: LeaveStatus.Approved,
+              start_date: LessThanOrEqual(endDate),
+              end_date: MoreThanOrEqual(startDate),
+              user: { role_id: In([2, 3, 4]) },
+            },
+            {
+              status: LeaveStatus.Pending,
+              start_date: LessThanOrEqual(endDate),
+              end_date: MoreThanOrEqual(startDate),
+              user: { role_id: In([2, 3, 4]) },
+            },
+          ],
           relations: ["user", "leaveType", "user.role"],
-        });
-        users = await userRepository.find({
-          where: { role_id: In([2, 3, 4]) },
         });
       } else if (userCredentials.role_id === 3) {
         const team = await userRepository.find({
@@ -441,37 +469,46 @@ export class LeaveController {
           where: [
             {
               user_id: userCredentials.user_id,
-              status: LeaveStatus.Approved,
+              status: In([LeaveStatus.Approved, LeaveStatus.Pending]),
               start_date: LessThanOrEqual(endDate),
               end_date: MoreThanOrEqual(startDate),
             },
             {
               user_id: In(teamIds),
-              status: LeaveStatus.Approved,
+              status: In([LeaveStatus.Approved, LeaveStatus.Pending]),
               start_date: LessThanOrEqual(endDate),
               end_date: MoreThanOrEqual(startDate),
             },
           ],
           relations: ["user", "leaveType", "user.role"],
         });
+
         console.log(`Leaves for manager ${userCredentials.user_id}:`, leaves);
         const currentUser = await userRepository.findOne({
           where: { user_id: userCredentials.user_id },
         });
         if (currentUser) {
-          users = [...team];
-          teamUsers = team; // Store team users for Manager view
+          users = [currentUser, ...team]; // Include self (manager) in list
         }
       } else {
         leaves = await leaveRepository.find({
-          where: {
-            user_id: userCredentials.user_id,
-            status: LeaveStatus.Approved,
-            start_date: LessThanOrEqual(endDate),
-            end_date: MoreThanOrEqual(startDate),
-          },
+          where: [
+            {
+              user_id: userCredentials.user_id,
+              status: LeaveStatus.Approved,
+              start_date: LessThanOrEqual(endDate),
+              end_date: MoreThanOrEqual(startDate),
+            },
+            {
+              user_id: userCredentials.user_id,
+              status: LeaveStatus.Pending,
+              start_date: LessThanOrEqual(endDate),
+              end_date: MoreThanOrEqual(startDate),
+            },
+          ],
           relations: ["user", "leaveType", "user.role"],
         });
+
         users = await userRepository.find({
           where: { user_id: userCredentials.user_id },
         });
@@ -504,8 +541,10 @@ export class LeaveController {
                 user_role_id: u.role_id,
                 user_role_name: u.role?.name || "Unknown",
                 leave_type: leave.leaveType.name,
+                leave_status: leave.status, // Add this line
               };
             }
+
             // No leave data implies presence (handled in frontend)
             return {
               user_id: u.user_id,
@@ -523,6 +562,7 @@ export class LeaveController {
             user_role_id: l.user.role_id,
             user_role_name: l.user.role.name,
             leave_type: l.leaveType.name,
+            leave_status: l.status, // Add this line
           }));
         }
 
