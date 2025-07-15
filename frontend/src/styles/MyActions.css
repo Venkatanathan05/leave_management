@@ -1,0 +1,78 @@
+.actions-container {
+  padding: 2rem;
+  max-width: 1100px;
+  margin: 0 auto;
+  background-color: #1e293b;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  color: #f1f5f9;
+  border: 1px solid #334155;
+}
+
+.actions-container h2 {
+  color: #60a5fa;
+  margin-bottom: 2rem;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.actions-table-wrapper {
+  overflow-x: auto; /* Allows table to be scrolled horizontally on small screens */
+}
+
+.actions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.actions-table th,
+.actions-table td {
+  padding: 1rem 1.25rem;
+  text-align: left;
+  border-bottom: 1px solid #334155;
+}
+
+.actions-table th {
+  color: #94a3b8;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.actions-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+.actions-table tbody tr:hover {
+  background-color: #283447;
+}
+
+.decision-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 12px;
+  font-weight: 500;
+  font-size: 0.8rem;
+}
+
+.decision-badge.approved {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.decision-badge.rejected {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.comments-cell {
+  font-style: italic;
+  color: #94a3b8;
+  max-width: 250px;
+  white-space: pre-wrap; /* Allows comments to wrap */
+  word-break: break-word;
+}

@@ -34,6 +34,12 @@ const hrRoutes: Hapi.ServerRoute[] = [
     handler: (request, h) => hrController.getPendingLeaveRequests(request, h),
     options: { auth: "jwt" },
   },
+  {
+    method: "GET",
+    path: "/api/hr/my-actions",
+    handler: (request, h) => hrController.getMyActions(request, h),
+    options: { auth: "jwt" },
+  },
 ];
 
 export { hrRoutes };

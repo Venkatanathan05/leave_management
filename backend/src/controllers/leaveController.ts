@@ -148,13 +148,25 @@ export class LeaveController {
       leave.end_date = parsedEndDate;
       leave.reason = reason;
       leave.applied_at = new Date();
+      leave.days_requested = workingDayInfo.working; // ✅ Add this here
       leave.user = user;
       leave.leaveType = leaveType;
 
-      leave.required_approvals = getRequiredApprovals(leave);
+      let working = workingDayInfo.working;
+      if (
+        working === 0 &&
+        new Date(start_date).toDateString() ===
+          new Date(end_date).toDateString()
+      ) {
+        working = 1;
+      }
 
+      leave.days_requested = working;
+
+      // Calculate required approvals and initial status
+      leave.required_approvals = getRequiredApprovals(leave);
       const { status: initialStatus } = checkApprovalStatus(leave, []);
-      leave.status = initialStatus; // Set the status derived from checkApprovalStatus
+      leave.status = initialStatus;
 
       const duration = calculateWorkingDays(parsedStartDate, parsedEndDate);
       console.log(
@@ -253,9 +265,6 @@ export class LeaveController {
           })
           .code(201);
       }
-
-      // ... (rest of your balance logic, no changes needed here unless it's impacting status)
-
       return h
         .response({
           message: "Leave applied successfully",
@@ -488,7 +497,7 @@ export class LeaveController {
           where: { user_id: userCredentials.user_id },
         });
         if (currentUser) {
-          users = [currentUser, ...team]; // Include self (manager) in list
+          users = [...team];
         }
       } else {
         leaves = await leaveRepository.find({

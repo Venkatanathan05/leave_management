@@ -37,6 +37,9 @@ export class Leave {
   @Column({ type: "date" })
   end_date!: Date;
 
+  @Column({ type: "int", nullable: false })
+  days_requested!: number;
+
   @Column({ type: "text" })
   reason!: string;
 

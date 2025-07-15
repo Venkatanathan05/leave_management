@@ -190,7 +190,7 @@ export class HRController {
           },
         });
         if (balance && leave.leaveType.is_balance_based) {
-          balance.used_days += working;
+          balance.used_days += leave.days_requested;
           balance.available_days = balance.total_days - balance.used_days;
           await leaveBalanceRepository.save(balance);
         }
@@ -338,6 +338,51 @@ export class HRController {
       throw Boom.internal(
         "Internal server error fetching pending leave requests"
       );
+    }
+  }
+
+  async getMyActions(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    const userCredentials = request.auth.credentials as {
+      user_id: number;
+      role_id: number;
+    };
+
+    if (userCredentials.role_id !== 5) {
+      throw Boom.forbidden("Access denied.");
+    }
+
+    try {
+      const leaveApprovalRepository =
+        AppDataSource.getRepository(LeaveApproval);
+
+      const allActions = await leaveApprovalRepository.find({
+        where: { approver_id: userCredentials.user_id },
+        relations: {
+          leave: {
+            user: true,
+            leaveType: true,
+          },
+        },
+        order: {
+          approved_at: "ASC", // Fetch oldest first to make filtering easier
+        },
+      });
+
+      // --- De-duplication Logic ---
+      const latestActionsMap = new Map<number, LeaveApproval>();
+      for (const action of allActions) {
+        latestActionsMap.set(action.leave.leave_id, action);
+      }
+
+      const uniqueLatestActions = Array.from(latestActionsMap.values()).sort(
+        (a, b) =>
+          new Date(b.approved_at).getTime() - new Date(a.approved_at).getTime()
+      );
+
+      return h.response(uniqueLatestActions).code(200);
+    } catch (error) {
+      console.error("Error fetching HR's actions:", error);
+      throw Boom.internal("Internal server error fetching your actions");
     }
   }
 }

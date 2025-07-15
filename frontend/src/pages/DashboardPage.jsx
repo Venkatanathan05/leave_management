@@ -12,6 +12,7 @@ import UserViewCard from "../components/UserViewCard.jsx";
 import LeaveRequests from "../components/LeaveRequests.jsx";
 import UserCreationForm from "../components/UserCreationForm.jsx";
 import ProfilePage from "../components/ProfilePage.jsx";
+import MyActions from "../components/MyActions.jsx";
 import "../styles/DashboardPage.css";
 
 function DashboardPage() {
@@ -42,6 +43,13 @@ function DashboardPage() {
             />
             <Route path="my-leaves" element={<MyLeaves />} />
             <Route path="calendar" element={<Calendar />} />
+
+            {(user.role_id === 1 ||
+              user.role_id === 3 ||
+              user.role_id === 5) && (
+              <Route path="my-actions" element={<MyActions />} />
+            )}
+
             {user.role_id === 1 && (
               <>
                 <Route path="users" element={<UserViewCard />} />

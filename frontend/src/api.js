@@ -57,6 +57,36 @@ export const getMyLeaves = async (userId) => {
   return response.data;
 };
 
+export const getMyActions = async (role_id) => {
+  let endpoint = "";
+  switch (role_id) {
+    case 1: // Admin
+      endpoint = "/admin/my-actions";
+      break;
+    case 5: // HR
+      endpoint = "/hr/my-actions";
+      break;
+    case 3: // Manager
+      endpoint = "/manager/my-actions";
+      break;
+    default:
+      // Return empty or throw error if called for a role without actions
+      console.error("getMyActions called for an invalid role:", role_id);
+      return [];
+  }
+
+  try {
+    const response = await api.get(endpoint);
+    return response.data;
+  } catch (error) {
+    console.error(
+      `getMyActions for role ${role_id} error:`,
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
 // HR endpoints
 export const getHRUsers = async () => {
   try {

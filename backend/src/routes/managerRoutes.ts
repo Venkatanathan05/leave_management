@@ -35,6 +35,12 @@ const managerRoutes: Hapi.ServerRoute[] = [
     handler: (request, h) => managerController.getUsers(request, h),
     options: { auth: "jwt" },
   },
+  {
+    method: "GET",
+    path: "/api/manager/my-actions",
+    handler: (request, h) => managerController.getMyActions(request, h),
+    options: { auth: "jwt" },
+  },
 ];
 
 export { managerRoutes };

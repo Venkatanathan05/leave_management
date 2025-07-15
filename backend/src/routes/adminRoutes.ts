@@ -41,6 +41,12 @@ const adminRoutes: Hapi.ServerRoute[] = [
     handler: (request, h) => adminController.rejectLeaveRequest(request, h),
     options: { auth: "jwt" },
   },
+  {
+    method: "GET",
+    path: "/api/admin/my-actions",
+    handler: (request, h) => adminController.getMyActions(request, h),
+    options: { auth: "jwt" },
+  },
 ];
 
 export { adminRoutes };

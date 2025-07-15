@@ -68,6 +68,11 @@ function Sidebar() {
               </li>
             </>
           )}
+          {(user.role_id === 1 || user.role_id === 3 || user.role_id === 5) && (
+            <li>
+              <Link to="/dashboard/my-actions">My Actions</Link>
+            </li>
+          )}
         </ul>
       </nav>
     </aside>

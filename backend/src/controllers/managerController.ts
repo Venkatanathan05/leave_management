@@ -252,7 +252,7 @@ export class ManagerController {
         if (balance && leave.leaveType?.is_balance_based) {
           console.log(`Balance before update: ${JSON.stringify(balance)}`);
           console.log("Prev Used Days : " + balance.used_days);
-          balance.used_days += working;
+          balance.used_days += leave.days_requested;
           console.log("Used Days : " + balance.used_days);
           console.log("Duration: " + working);
           console.log("");
@@ -455,6 +455,51 @@ export class ManagerController {
     } catch (error) {
       console.error("Error fetching team availability:", error);
       throw Boom.internal("Internal server error fetching team availability");
+    }
+  }
+
+  async getMyActions(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    const userCredentials = request.auth.credentials as {
+      user_id: number;
+      role_id: number;
+    };
+
+    if (userCredentials.role_id !== 3) {
+      throw Boom.forbidden("Access denied.");
+    }
+
+    try {
+      const leaveApprovalRepository =
+        AppDataSource.getRepository(LeaveApproval);
+
+      const allActions = await leaveApprovalRepository.find({
+        where: { approver_id: userCredentials.user_id },
+        relations: {
+          leave: {
+            user: true,
+            leaveType: true,
+          },
+        },
+        order: {
+          approved_at: "ASC", // Fetch oldest first to make filtering easier
+        },
+      });
+
+      // --- De-duplication Logic ---
+      const latestActionsMap = new Map<number, LeaveApproval>();
+      for (const action of allActions) {
+        latestActionsMap.set(action.leave.leave_id, action);
+      }
+
+      const uniqueLatestActions = Array.from(latestActionsMap.values()).sort(
+        (a, b) =>
+          new Date(b.approved_at).getTime() - new Date(a.approved_at).getTime()
+      );
+
+      return h.response(uniqueLatestActions).code(200);
+    } catch (error) {
+      console.error("Error fetching manager's actions:", error);
+      throw Boom.internal("Internal server error fetching your actions");
     }
   }
 }

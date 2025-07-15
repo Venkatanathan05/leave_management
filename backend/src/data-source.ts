@@ -16,7 +16,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME || "postgres",
   password: process.env.DB_PASSWORD || "venkat@123",
   database: process.env.DB_NAME || "leave_management",
-  synchronize: true, // Set to false in production
+  synchronize: true,
   logging: false,
   entities: [User, Role, Leave, LeaveType, LeaveBalance, LeaveApproval],
   migrations: [],

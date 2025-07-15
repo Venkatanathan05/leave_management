@@ -89,7 +89,7 @@ function LeaveForm() {
           position: "top-right",
         });
       } else {
-        toast.error(errorMessage, { position: "top-right" });
+        toast.error(errorMessage, { position: "bottom-right" });
       }
     } finally {
       setLoading(false);
@@ -102,7 +102,6 @@ function LeaveForm() {
     <div className="leave-form">
       <h2>Apply for Leave</h2>
       <ToastContainer />
-      {error && <p className="error">{error}</p>}
       <div className="form-container">
         <div className="form-group">
           <label htmlFor="type_id">Leave Type</label>
@@ -170,6 +169,7 @@ function LeaveForm() {
         >
           {loading ? "Submitting..." : "Apply Leave"}
         </button>
+        {error && <p className="error">{error}</p>}
       </div>
     </div>
   );

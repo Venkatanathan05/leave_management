@@ -25,7 +25,7 @@ export function AuthProvider({ children }) {
       }
     }
 
-    setLoading(false); // important!
+    setLoading(false);
   }, []);
 
   const login = (token, user) => {

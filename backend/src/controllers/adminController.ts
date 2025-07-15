@@ -318,7 +318,7 @@ export class AdminController {
           },
         });
         if (balance && leave.leaveType.is_balance_based) {
-          balance.used_days += working;
+          balance.used_days += leave.days_requested;
           balance.available_days = balance.total_days - balance.used_days;
           await leaveBalanceRepository.save(balance);
         }
@@ -417,6 +417,55 @@ export class AdminController {
     } catch (error) {
       console.error("Error rejecting leave:", error);
       throw Boom.internal("Internal server error rejecting leave");
+    }
+  }
+
+  async getMyActions(request: Hapi.Request, h: Hapi.ResponseToolkit) {
+    const userCredentials = request.auth.credentials as {
+      user_id: number;
+      role_id: number;
+    };
+
+    if (userCredentials.role_id !== 1) {
+      throw Boom.forbidden("Access denied.");
+    }
+
+    try {
+      const leaveApprovalRepository =
+        AppDataSource.getRepository(LeaveApproval);
+
+      const allActions = await leaveApprovalRepository.find({
+        where: { approver_id: userCredentials.user_id },
+        relations: {
+          leave: {
+            user: true,
+            leaveType: true,
+          },
+        },
+        order: {
+          approved_at: "ASC", // Fetch oldest first to make filtering easier
+        },
+      });
+
+      // --- De-duplication Logic ---
+      // Use a Map to store only the most recent action for each leave ID.
+      const latestActionsMap = new Map<number, LeaveApproval>();
+      for (const action of allActions) {
+        // Since we ordered by date ASC, each subsequent action for the same leave is newer.
+        // This will overwrite any previous (older) action for the same leave.
+        latestActionsMap.set(action.leave.leave_id, action);
+      }
+
+      // Convert the Map values back to an array and sort by date descending for the UI.
+      const uniqueLatestActions = Array.from(latestActionsMap.values()).sort(
+        (a, b) =>
+          new Date(b.approved_at).getTime() - new Date(a.approved_at).getTime()
+      );
+
+      return h.response(uniqueLatestActions).code(200);
+    } catch (error) {
+      console.error("Error fetching admin's actions:", error);
+      throw Boom.internal("Internal server error fetching your actions");
     }
   }
 }
